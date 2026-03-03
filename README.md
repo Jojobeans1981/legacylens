@@ -2,6 +2,9 @@
 
 A production-ready RAG (Retrieval-Augmented Generation) system that makes the BLAS (Basic Linear Algebra Subprograms) Fortran codebase queryable via natural language.
 
+**Live demo:** https://legacylens-ycuy.onrender.com/
+**Dashboard:** https://legacylens-ycuy.onrender.com/dashboard
+
 ## Architecture
 
 ```
@@ -18,18 +21,18 @@ A production-ready RAG (Retrieval-Augmented Generation) system that makes the BL
 
 ### Pipeline Flow
 
-1. **Ingestion**: BLAS `.f` files → Fortran-aware chunker → sentence-transformers embeddings → Pinecone upsert
-2. **Query**: Natural language → embed → Pinecone similarity search → context assembly → Claude Sonnet streaming response
+1. **Ingestion**: BLAS `.f` files → Fortran-aware chunker → Pinecone Inference embeddings → Pinecone upsert
+2. **Query**: Natural language → embed → Pinecone similarity search → context assembly → Claude Haiku streaming response
 3. **Observability**: All queries, costs, and errors logged to SQLite → real-time dashboard
 
 ## Stack
 
 | Layer | Technology |
 |-------|-----------|
-| Codebase | BLAS 3.12.0 Fortran (143 files, 71K LOC) |
+| Codebase | BLAS 3.12.0 Fortran (163 files, 71K LOC) |
 | Vector DB | Pinecone (serverless, cosine similarity) |
-| Embeddings | sentence-transformers `all-MiniLM-L6-v2` (384-dim, local) |
-| Answer LLM | Claude Sonnet via Anthropic API |
+| Embeddings | Pinecone Inference API (`multilingual-e5-large`, 1024-dim) |
+| Answer LLM | Claude Haiku 4.5 via Anthropic API |
 | Backend | Python 3.11+ / FastAPI / uvicorn |
 | Frontend | Vanilla HTML/CSS/JS (no build step) |
 | Database | SQLite (observability logging) |
@@ -102,6 +105,7 @@ legacylens/
 ├── ingest.py         # Ingestion pipeline
 ├── retrieval.py      # RAG retrieval pipeline
 ├── chunker.py        # Fortran syntax-aware chunking
+├── embed.py          # Pinecone Inference API embeddings
 ├── llm.py            # Claude API wrapper with streaming
 ├── db.py             # SQLite observability logging
 ├── models.py         # Pydantic models
