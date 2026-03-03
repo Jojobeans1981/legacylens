@@ -14,30 +14,53 @@ load_dotenv()
 STATIC_DIR = os.path.join(os.path.dirname(__file__), "static")
 
 
-def _ensure_blas_source():
-    """Download BLAS source if not present on disk."""
-    source_dir = os.getenv("BLAS_SOURCE_DIR", "/data/blas_source")
-    if os.path.isdir(source_dir):
-        has_fortran = any(
-            f.endswith('.f') for f in os.listdir(source_dir)
-            if os.path.isfile(os.path.join(source_dir, f))
-        )
-        has_subdirs = any(
-            os.path.isdir(os.path.join(source_dir, d)) for d in os.listdir(source_dir)
-            if not d.startswith('.')
-        )
-        if has_fortran or has_subdirs:
-            print(f"BLAS source found at {source_dir}")
-            return
-    print(f"BLAS source not found at {source_dir}, downloading...")
-    os.makedirs(source_dir, exist_ok=True)
-    import subprocess
-    subprocess.run(
-        ["bash", "-c",
-         f"curl -sL https://www.netlib.org/blas/blas.tgz | tar xz -C {source_dir}"],
-        check=True
+def _dir_has_fortran(path: str) -> bool:
+    """Check if a directory has Fortran files or subdirectories."""
+    if not os.path.isdir(path):
+        return False
+    has_fortran = any(
+        f.endswith('.f') or f.endswith('.f90') for f in os.listdir(path)
+        if os.path.isfile(os.path.join(path, f))
     )
-    print("BLAS source downloaded.")
+    has_subdirs = any(
+        os.path.isdir(os.path.join(path, d)) for d in os.listdir(path)
+        if not d.startswith('.')
+    )
+    return has_fortran or has_subdirs
+
+
+def _ensure_sources():
+    """Download BLAS and LAPACK source if not present on disk."""
+    import subprocess
+
+    source_dirs = os.getenv("SOURCE_DIRS",
+                            os.getenv("BLAS_SOURCE_DIR", "/data/blas_source")).split(",")
+
+    for source_dir in source_dirs:
+        source_dir = source_dir.strip()
+        if _dir_has_fortran(source_dir):
+            print(f"Source found at {source_dir}")
+            continue
+
+        os.makedirs(source_dir, exist_ok=True)
+
+        if "lapack" in source_dir.lower():
+            print(f"LAPACK source not found at {source_dir}, downloading...")
+            subprocess.run(
+                ["bash", "-c",
+                 f"curl -sL https://github.com/Reference-LAPACK/lapack/archive/refs/tags/v3.12.0.tar.gz"
+                 f" | tar xz --strip-components=2 -C {source_dir} lapack-3.12.0/SRC"],
+                check=True
+            )
+            print("LAPACK source downloaded.")
+        else:
+            print(f"BLAS source not found at {source_dir}, downloading...")
+            subprocess.run(
+                ["bash", "-c",
+                 f"curl -sL https://www.netlib.org/blas/blas.tgz | tar xz -C {source_dir}"],
+                check=True
+            )
+            print("BLAS source downloaded.")
 
 
 def _get_index():
@@ -100,15 +123,17 @@ async def ingest(request: Request):
     if not api_key or api_key != expected_key:
         raise HTTPException(status_code=401, detail="Invalid API key")
 
-    _ensure_blas_source()
-    source_dir = os.getenv("BLAS_SOURCE_DIR", "/data/blas_source")
-    if not os.path.isdir(source_dir):
+    _ensure_sources()
+    source_dirs_raw = os.getenv("SOURCE_DIRS",
+                                os.getenv("BLAS_SOURCE_DIR", "/data/blas_source")).split(",")
+    source_dirs = [d.strip() for d in source_dirs_raw if os.path.isdir(d.strip())]
+    if not source_dirs:
         raise HTTPException(status_code=400,
-                            detail=f"Source directory not found: {source_dir}")
+                            detail="No valid source directories found")
 
     try:
         index = _get_index()
-        result = run_ingestion(source_dir=source_dir, index=index)
+        result = run_ingestion(source_dirs=source_dirs, index=index)
         return result.model_dump()
     except Exception as e:
         log_error("/ingest", type(e).__name__, str(e))

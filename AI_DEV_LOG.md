@@ -187,3 +187,20 @@
 - All 8 queries return 5 chunks (full context every time)
 - Q7 docgen hit Anthropic content filter twice (intermittent) but succeeded on retry
 - Dashboard at /dashboard fully operational with live stats
+
+## 2026-03-03 Multi-Source Ingestion — Adding LAPACK
+
+**What I did:** Upgraded ingestion pipeline to support multiple source directories. Added LAPACK alongside BLAS.
+
+**Changes made:**
+- `ingest.py`: `run_ingestion()` now accepts `source_dirs: list[str]` instead of a single `source_dir`. Discovers and chunks files from all directories.
+- `main.py`: `_ensure_sources()` replaces `_ensure_blas_source()`. Auto-downloads both BLAS (from netlib.org) and LAPACK (from GitHub Reference-LAPACK v3.12.0). `/ingest` route reads `SOURCE_DIRS` env var (comma-separated).
+- `render.yaml`: `BLAS_SOURCE_DIR` replaced with `SOURCE_DIRS=/data/blas_source,/data/lapack_source`
+- `.env.example`: Updated to match
+
+**Decisions made:**
+- LAPACK downloaded from GitHub releases (v3.12.0) using `--strip-components=2` to extract only `SRC/` directory
+- Backward compatible: falls back to `BLAS_SOURCE_DIR` env var if `SOURCE_DIRS` not set
+- LAPACK adds ~1,500 Fortran files covering eigenvalue solvers, linear system solvers, factorizations, etc.
+
+**Next step:** Deploy, run ingestion, verify expanded coverage in dashboard

@@ -53,11 +53,11 @@ def connect_pinecone():
     return pc.Index(index_name)
 
 
-def run_ingestion(source_dir: str, index=None) -> IngestResult:
+def run_ingestion(source_dirs: list[str], index=None) -> IngestResult:
     """Full ingestion pipeline: discover -> chunk -> embed -> upsert.
 
     Args:
-        source_dir: Path to BLAS source directory
+        source_dirs: List of source directory paths to ingest
         index: Pre-connected Pinecone index (or connects)
     """
     start_time = time.time()
@@ -66,26 +66,32 @@ def run_ingestion(source_dir: str, index=None) -> IngestResult:
     if index is None:
         index = connect_pinecone()
 
-    # Discover files
-    files = discover_fortran_files(source_dir)
-    print(f"Found {len(files)} Fortran files")
+    # Discover files from all source directories
+    files = []
+    for source_dir in source_dirs:
+        found = discover_fortran_files(source_dir)
+        print(f"Found {len(found)} Fortran files in {source_dir}")
+        files.extend(found)
+    print(f"Total: {len(files)} Fortran files across {len(source_dirs)} directories")
 
     # Chunk all files
     all_chunks: list[Chunk] = []
     files_processed = []
     for filepath in files:
         chunks = chunk_fortran_file(filepath)
-        # Update file_path to be relative to source_dir
-        source_path = Path(source_dir)
-        for chunk in chunks:
+        # Find which source_dir this file belongs to for relative paths
+        rel_path = filepath.name
+        for source_dir in source_dirs:
+            source_path = Path(source_dir)
             try:
-                chunk.file_path = str(filepath.relative_to(source_path))
+                rel_path = str(filepath.relative_to(source_path))
+                break
             except ValueError:
-                chunk.file_path = filepath.name
+                continue
+        for chunk in chunks:
+            chunk.file_path = rel_path
         all_chunks.extend(chunks)
-        files_processed.append(str(filepath.relative_to(source_path)
-                                   if filepath.is_relative_to(source_path)
-                                   else filepath.name))
+        files_processed.append(rel_path)
 
     print(f"Generated {len(all_chunks)} chunks from {len(files)} files")
 
