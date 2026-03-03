@@ -123,10 +123,16 @@ async def ingest(request: Request):
     if not api_key or api_key != expected_key:
         raise HTTPException(status_code=401, detail="Invalid API key")
 
-    _ensure_sources()
+    try:
+        _ensure_sources()
+    except Exception as e:
+        print(f"Warning: source download failed: {e}")
+
     source_dirs_raw = os.getenv("SOURCE_DIRS",
                                 os.getenv("BLAS_SOURCE_DIR", "/data/blas_source")).split(",")
     source_dirs = [d.strip() for d in source_dirs_raw if os.path.isdir(d.strip())]
+    print(f"SOURCE_DIRS env: {os.getenv('SOURCE_DIRS', 'NOT SET')}")
+    print(f"Resolved dirs: {source_dirs}")
     if not source_dirs:
         raise HTTPException(status_code=400,
                             detail="No valid source directories found")
@@ -134,7 +140,9 @@ async def ingest(request: Request):
     try:
         index = _get_index()
         result = run_ingestion(source_dirs=source_dirs, index=index)
-        return result.model_dump()
+        resp = result.model_dump()
+        resp["source_dirs_used"] = source_dirs
+        return resp
     except Exception as e:
         log_error("/ingest", type(e).__name__, str(e))
         raise HTTPException(status_code=500, detail=str(e))
