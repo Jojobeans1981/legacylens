@@ -33,7 +33,7 @@ def _ensure_sources():
     """Download BLAS and LAPACK source if not present on disk."""
     import subprocess
 
-    source_dirs = os.getenv("SOURCE_DIRS", "/data/blas_source,/data/lapack_source").split(",")
+    source_dirs = os.getenv("SOURCE_DIRS", "./data/blas_source,./data/lapack_source").split(",")
 
     for source_dir in source_dirs:
         source_dir = source_dir.strip()
@@ -113,7 +113,7 @@ async def health():
 @app.get("/debug/env")
 async def debug_env():
     import subprocess
-    resolved = os.getenv("SOURCE_DIRS", "/data/blas_source,/data/lapack_source").split(",")
+    resolved = os.getenv("SOURCE_DIRS", "./data/blas_source,./data/lapack_source").split(",")
     dir_status = {}
     for d in resolved:
         d = d.strip()
@@ -148,7 +148,7 @@ async def ingest(request: Request):
     except Exception as e:
         print(f"Warning: source download failed: {e}")
 
-    source_dirs_raw = os.getenv("SOURCE_DIRS", "/data/blas_source,/data/lapack_source").split(",")
+    source_dirs_raw = os.getenv("SOURCE_DIRS", "./data/blas_source,./data/lapack_source").split(",")
     source_dirs = [d.strip() for d in source_dirs_raw if os.path.isdir(d.strip())]
     print(f"Resolved dirs: {source_dirs}")
     if not source_dirs:
