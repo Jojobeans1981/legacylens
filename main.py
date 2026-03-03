@@ -2,6 +2,7 @@
 
 import json
 import os
+import threading
 import time
 import traceback
 from contextlib import asynccontextmanager
@@ -23,15 +24,18 @@ from db import log_query, log_error, get_stats, get_connection
 def _ensure_blas_source():
     """Download BLAS source if not present on disk."""
     source_dir = os.getenv("BLAS_SOURCE_DIR", "/data/blas_source")
-    if os.path.isdir(source_dir) and any(
-        f.endswith('.f') for f in os.listdir(source_dir)
-        if os.path.isfile(os.path.join(source_dir, f))
-    ) or any(
-        os.path.isdir(os.path.join(source_dir, d)) for d in os.listdir(source_dir)
-        if not d.startswith('.')
-    ):
-        print(f"BLAS source found at {source_dir}")
-        return
+    if os.path.isdir(source_dir):
+        has_fortran = any(
+            f.endswith('.f') for f in os.listdir(source_dir)
+            if os.path.isfile(os.path.join(source_dir, f))
+        )
+        has_subdirs = any(
+            os.path.isdir(os.path.join(source_dir, d)) for d in os.listdir(source_dir)
+            if not d.startswith('.')
+        )
+        if has_fortran or has_subdirs:
+            print(f"BLAS source found at {source_dir}")
+            return
     print(f"BLAS source not found at {source_dir}, downloading...")
     os.makedirs(source_dir, exist_ok=True)
     import subprocess
@@ -43,10 +47,10 @@ def _ensure_blas_source():
     print("BLAS source downloaded.")
 
 
-@asynccontextmanager
-async def lifespan(app: FastAPI):
-    """Load model and connect to Pinecone at startup."""
+def _init_worker(app):
+    """Background worker to load model and connect services."""
     _ensure_blas_source()
+
     print("Loading sentence-transformers model...")
     try:
         from sentence_transformers import SentenceTransformer
@@ -55,8 +59,6 @@ async def lifespan(app: FastAPI):
         print("Model loaded successfully.")
     except Exception as e:
         print(f"Warning: Could not load model: {e}")
-        app.state.model = None
-        app.state.model_loaded = False
 
     print("Connecting to Pinecone...")
     try:
@@ -65,8 +67,18 @@ async def lifespan(app: FastAPI):
         print("Pinecone connected.")
     except Exception as e:
         print(f"Warning: Could not connect to Pinecone: {e}")
-        app.state.index = None
-        app.state.index_connected = False
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """Start background init and yield immediately so the port opens fast."""
+    app.state.model = None
+    app.state.model_loaded = False
+    app.state.index = None
+    app.state.index_connected = False
+
+    thread = threading.Thread(target=_init_worker, args=(app,), daemon=True)
+    thread.start()
 
     yield
 
