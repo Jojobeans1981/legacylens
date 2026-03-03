@@ -2,23 +2,16 @@
 
 import json
 import os
-import threading
 import time
-import traceback
 from contextlib import asynccontextmanager
 
 from dotenv import load_dotenv
 from fastapi import FastAPI, Request, HTTPException
 from fastapi.responses import HTMLResponse, StreamingResponse, JSONResponse
-from fastapi.staticfiles import StaticFiles
 
 load_dotenv()
 
-from models import QueryRequest, HealthResponse
-from ingest import run_ingestion, connect_pinecone
-from retrieval import retrieve
-from llm import generate_answer
-from db import log_query, log_error, get_stats, get_connection
+STATIC_DIR = os.path.join(os.path.dirname(__file__), "static")
 
 
 def _ensure_blas_source():
@@ -47,35 +40,26 @@ def _ensure_blas_source():
     print("BLAS source downloaded.")
 
 
-def _init_worker(app):
-    """Background worker to download BLAS source and connect services."""
-    _ensure_blas_source()
-
-    print("Connecting to Pinecone...")
-    try:
+def _get_index():
+    """Lazy-connect to Pinecone on first use."""
+    if not getattr(app.state, "index", None):
+        from ingest import connect_pinecone
         app.state.index = connect_pinecone()
         app.state.index_connected = True
-        print("Pinecone connected.")
-    except Exception as e:
-        print(f"Warning: Could not connect to Pinecone: {e}")
+        print("Pinecone connected (lazy init).")
+    return app.state.index
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    """Start background init and yield immediately so the port opens fast."""
+    """Minimal startup — heavy init deferred to first request."""
     app.state.index = None
     app.state.index_connected = False
-
-    thread = threading.Thread(target=_init_worker, args=(app,), daemon=True)
-    thread.start()
-
+    print("LegacyLens starting (lazy mode)...")
     yield
 
 
 app = FastAPI(title="LegacyLens", version="1.0.0", lifespan=lifespan)
-
-# Serve static files
-STATIC_DIR = os.path.join(os.path.dirname(__file__), "static")
 
 
 # ─── HTML Routes ────────────────────────────────────────────────────────────
@@ -96,9 +80,10 @@ async def serve_dashboard():
 
 @app.get("/health")
 async def health():
+    from models import HealthResponse
     return HealthResponse(
         status="ok",
-        model_loaded=True,  # Using HF Inference API, always available
+        model_loaded=True,
         index_connected=getattr(app.state, "index_connected", False),
     )
 
@@ -107,22 +92,23 @@ async def health():
 
 @app.post("/ingest")
 async def ingest(request: Request):
-    # Simple API key protection
+    from ingest import run_ingestion
+    from db import log_error
+
     api_key = request.headers.get("X-API-Key", "")
     expected_key = os.getenv("ANTHROPIC_API_KEY", "")
     if not api_key or api_key != expected_key:
         raise HTTPException(status_code=401, detail="Invalid API key")
 
+    _ensure_blas_source()
     source_dir = os.getenv("BLAS_SOURCE_DIR", "/data/blas_source")
     if not os.path.isdir(source_dir):
         raise HTTPException(status_code=400,
                             detail=f"Source directory not found: {source_dir}")
 
     try:
-        result = run_ingestion(
-            source_dir=source_dir,
-            index=app.state.index,
-        )
+        index = _get_index()
+        result = run_ingestion(source_dir=source_dir, index=index)
         return result.model_dump()
     except Exception as e:
         log_error("/ingest", type(e).__name__, str(e))
@@ -131,20 +117,22 @@ async def ingest(request: Request):
 
 # ─── Query Routes ───────────────────────────────────────────────────────────
 
-async def _handle_query(request: QueryRequest, mode: str):
+async def _handle_query(query_request, mode: str):
     """Common handler for all query modes. Returns streaming SSE response."""
+    from retrieval import retrieve
+    from llm import generate_answer
+    from db import log_query, log_error
+
     start_time = time.time()
 
-    if not app.state.index:
-        raise HTTPException(status_code=503,
-                            detail="Pinecone index not ready. Please wait for startup.")
+    try:
+        index = _get_index()
+    except Exception as e:
+        raise HTTPException(status_code=503, detail=f"Pinecone not ready: {e}")
 
     # Retrieval
     try:
-        retrieval_result = retrieve(
-            query=request.query,
-            index=app.state.index,
-        )
+        retrieval_result = retrieve(query=query_request.query, index=index)
     except Exception as e:
         log_error(f"/{mode}", type(e).__name__, str(e))
         raise HTTPException(status_code=500, detail=f"Retrieval failed: {e}")
@@ -152,7 +140,6 @@ async def _handle_query(request: QueryRequest, mode: str):
     top_score = retrieval_result.chunks[0].score if retrieval_result.chunks else 0.0
     chunks_retrieved = len(retrieval_result.chunks)
 
-    # Prepare retrieval metadata to send before streaming
     retrieval_meta = {
         "type": "retrieval",
         "found": retrieval_result.found,
@@ -165,18 +152,15 @@ async def _handle_query(request: QueryRequest, mode: str):
         output_tokens = 0
         cost_usd = 0.0
 
-        # Send retrieval metadata first
         yield f"data: {json.dumps(retrieval_meta)}\n\n"
 
-        # Stream LLM answer
         try:
             async for chunk in generate_answer(
-                query=request.query,
+                query=query_request.query,
                 context=retrieval_result.context,
                 mode=mode,
             ):
                 if chunk.startswith("\x00"):
-                    # Metadata chunk
                     meta = json.loads(chunk[1:])
                     input_tokens = meta["input_tokens"]
                     output_tokens = meta["output_tokens"]
@@ -190,13 +174,11 @@ async def _handle_query(request: QueryRequest, mode: str):
 
         latency_ms = int((time.time() - start_time) * 1000)
 
-        # Send final metadata
         yield f"data: {json.dumps({'type': 'done', 'input_tokens': input_tokens, 'output_tokens': output_tokens, 'cost_usd': cost_usd, 'latency_ms': latency_ms})}\n\n"
 
-        # Log to database
         try:
             log_query(
-                query=request.query,
+                query=query_request.query,
                 mode=mode,
                 chunks_retrieved=chunks_retrieved,
                 top_score=top_score,
@@ -221,34 +203,45 @@ async def _handle_query(request: QueryRequest, mode: str):
 
 
 @app.post("/query")
-async def query_endpoint(request: QueryRequest):
-    return await _handle_query(request, "query")
+async def query_endpoint(request: Request):
+    from models import QueryRequest
+    body = await request.json()
+    return await _handle_query(QueryRequest(**body), "query")
 
 
 @app.post("/explain")
-async def explain_endpoint(request: QueryRequest):
-    return await _handle_query(request, "explain")
+async def explain_endpoint(request: Request):
+    from models import QueryRequest
+    body = await request.json()
+    return await _handle_query(QueryRequest(**body), "explain")
 
 
 @app.post("/docgen")
-async def docgen_endpoint(request: QueryRequest):
-    return await _handle_query(request, "docgen")
+async def docgen_endpoint(request: Request):
+    from models import QueryRequest
+    body = await request.json()
+    return await _handle_query(QueryRequest(**body), "docgen")
 
 
 @app.post("/translate")
-async def translate_endpoint(request: QueryRequest):
-    return await _handle_query(request, "translate")
+async def translate_endpoint(request: Request):
+    from models import QueryRequest
+    body = await request.json()
+    return await _handle_query(QueryRequest(**body), "translate")
 
 
 @app.post("/patterns")
-async def patterns_endpoint(request: QueryRequest):
-    return await _handle_query(request, "patterns")
+async def patterns_endpoint(request: Request):
+    from models import QueryRequest
+    body = await request.json()
+    return await _handle_query(QueryRequest(**body), "patterns")
 
 
 # ─── Dashboard API ──────────────────────────────────────────────────────────
 
 @app.get("/api/stats")
 async def api_stats():
+    from db import get_stats, log_error
     try:
         stats = get_stats()
         return JSONResponse(content=stats)
@@ -259,6 +252,7 @@ async def api_stats():
 
 @app.get("/api/recent-queries")
 async def api_recent_queries():
+    from db import get_connection
     try:
         conn = get_connection()
         rows = conn.execute(
@@ -274,6 +268,7 @@ async def api_recent_queries():
 
 @app.get("/api/errors")
 async def api_errors():
+    from db import get_connection
     try:
         conn = get_connection()
         rows = conn.execute(
