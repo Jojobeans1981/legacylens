@@ -33,8 +33,7 @@ def _ensure_sources():
     """Download BLAS and LAPACK source if not present on disk."""
     import subprocess
 
-    source_dirs = os.getenv("SOURCE_DIRS",
-                            os.getenv("BLAS_SOURCE_DIR", "/data/blas_source")).split(",")
+    source_dirs = os.getenv("SOURCE_DIRS", "/data/blas_source,/data/lapack_source").split(",")
 
     for source_dir in source_dirs:
         source_dir = source_dir.strip()
@@ -113,9 +112,22 @@ async def health():
 
 @app.get("/debug/env")
 async def debug_env():
+    import subprocess
+    resolved = os.getenv("SOURCE_DIRS", "/data/blas_source,/data/lapack_source").split(",")
+    dir_status = {}
+    for d in resolved:
+        d = d.strip()
+        if os.path.isdir(d):
+            count = len([f for f in os.listdir(d) if f.endswith(('.f', '.f90'))])
+            dir_status[d] = f"exists ({count} Fortran files)"
+        else:
+            dir_status[d] = "does not exist"
     return {
-        "SOURCE_DIRS": os.getenv("SOURCE_DIRS", "NOT SET"),
-        "BLAS_SOURCE_DIR": os.getenv("BLAS_SOURCE_DIR", "NOT SET"),
+        "SOURCE_DIRS_env": os.getenv("SOURCE_DIRS", "NOT SET"),
+        "BLAS_SOURCE_DIR_env": os.getenv("BLAS_SOURCE_DIR", "NOT SET"),
+        "resolved_dirs": resolved,
+        "dir_status": dir_status,
+        "all_env_keys": sorted([k for k in os.environ.keys() if not k.startswith("_")]),
     }
 
 
@@ -136,10 +148,8 @@ async def ingest(request: Request):
     except Exception as e:
         print(f"Warning: source download failed: {e}")
 
-    source_dirs_raw = os.getenv("SOURCE_DIRS",
-                                os.getenv("BLAS_SOURCE_DIR", "/data/blas_source")).split(",")
+    source_dirs_raw = os.getenv("SOURCE_DIRS", "/data/blas_source,/data/lapack_source").split(",")
     source_dirs = [d.strip() for d in source_dirs_raw if os.path.isdir(d.strip())]
-    print(f"SOURCE_DIRS env: {os.getenv('SOURCE_DIRS', 'NOT SET')}")
     print(f"Resolved dirs: {source_dirs}")
     if not source_dirs:
         raise HTTPException(status_code=400,
