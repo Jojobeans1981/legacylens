@@ -143,3 +143,47 @@
 - Model configurable via CLAUDE_MODEL env var for flexibility
 
 **Next step:** Update cost analysis, commit, prepare for Render deployment
+
+## 2026-03-03 Render Deployment — Debugging & Fixes
+**What I did:** Deployed to Render and fixed 4 blocking issues.
+
+**Problems encountered and solutions:**
+1. **FileNotFoundError in `_ensure_blas_source()`** — `os.listdir()` called on non-existent directory due to `or`/`and` operator precedence bug. Fixed by checking `os.path.isdir()` first.
+2. **Port scan timeout** — Model loading blocked the lifespan handler, preventing uvicorn from binding the port. Moved init to background thread, then to fully lazy imports.
+3. **OOM on Render free tier (512MB)** — `sentence-transformers` pulls in PyTorch (~400MB+). Removed it entirely; switched to API-based embeddings.
+4. **HuggingFace Inference API returned 410 Gone** — Free inference endpoint deprecated. Switched to Pinecone's built-in Inference API (`multilingual-e5-large`, 1024 dims). Same API key, no new dependencies.
+5. **Pinecone rate limit (250K tokens/min)** — Added batching (20 chunks/batch) with 2s delays and exponential backoff on 429 errors.
+
+**Architecture changes:**
+- Embeddings: local sentence-transformers → Pinecone Inference API (multilingual-e5-large, 1024 dims)
+- All heavy imports (pinecone, anthropic, db) are now lazy (inside route handlers)
+- Startup is instant — only stdlib + FastAPI loaded at module level
+- Pinecone connects lazily on first request
+
+**Deployment result:**
+- URL: https://legacylens-ycuy.onrender.com/
+- Ingestion: 163 files, 330 chunks, 48.5s
+- Health: `{"status":"ok","model_loaded":true,"index_connected":true}`
+
+## 2026-03-03 Production Test — All 8 Queries
+
+**Test Results (Render deployment, Pinecone embeddings):**
+
+| # | Query | Mode | Top Score | Chunks | Latency | Cost |
+|---|-------|------|-----------|--------|---------|------|
+| 1 | Where is the main entry point? | query | 0.809 | 5 | 3132ms | $0.0029 |
+| 2 | What subroutines modify matrix args? | query | 0.820 | 5 | 3822ms | $0.0034 |
+| 3 | Explain DGEMM | explain | 0.801 | 5 | 5652ms | $0.0041 |
+| 4 | Find all file I/O operations | query | 0.789 | 5 | 4250ms | $0.0032 |
+| 5 | Dependencies of DGEMV | query | 0.787 | 5 | 3131ms | $0.0028 |
+| 6 | Error handling patterns | patterns | 0.784 | 5 | 6392ms | $0.0041 |
+| 7 | Generate docs for SGEMM | docgen | 0.829 | 5 | 6264ms | $0.0000 |
+| 8 | Translate DTRSM to NumPy | translate | 0.846 | 5 | 11791ms | $0.0086 |
+
+**Aggregate stats:**
+- Total cost: $0.0324 (10 queries including 2 test runs)
+- Average latency: 5,462ms
+- All retrieval scores >0.78 (major improvement from Pinecone embeddings vs local model)
+- All 8 queries return 5 chunks (full context every time)
+- Q7 docgen hit Anthropic content filter twice (intermittent) but succeeded on retry
+- Dashboard at /dashboard fully operational with live stats
