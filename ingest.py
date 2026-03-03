@@ -25,24 +25,30 @@ def discover_fortran_files(source_dir: str) -> list[Path]:
 def connect_pinecone():
     """Connect to Pinecone and return the index."""
     from pinecone import Pinecone, ServerlessSpec
+    from embed import EMBED_DIMENSION
 
     api_key = os.getenv("PINECONE_API_KEY", "")
     index_name = os.getenv("PINECONE_INDEX_NAME", "legacylens-blas")
 
     pc = Pinecone(api_key=api_key)
 
-    # Check if index exists, create if not
-    existing_indexes = [idx.name for idx in pc.list_indexes()]
-    if index_name not in existing_indexes:
-        pc.create_index(
-            name=index_name,
-            dimension=384,  # all-MiniLM-L6-v2 output dimension
-            metric="cosine",
-            spec=ServerlessSpec(cloud="aws", region="us-east-1")
-        )
-        # Wait for index to be ready
-        import time as _time
-        _time.sleep(5)
+    # Check if index exists with correct dimensions
+    existing = {idx.name: idx for idx in pc.list_indexes()}
+    if index_name in existing:
+        if existing[index_name].dimension != EMBED_DIMENSION:
+            print(f"Index dimension mismatch ({existing[index_name].dimension} vs {EMBED_DIMENSION}), recreating...")
+            pc.delete_index(index_name)
+            time.sleep(5)
+        else:
+            return pc.Index(index_name)
+
+    pc.create_index(
+        name=index_name,
+        dimension=EMBED_DIMENSION,
+        metric="cosine",
+        spec=ServerlessSpec(cloud="aws", region="us-east-1")
+    )
+    time.sleep(5)
 
     return pc.Index(index_name)
 
@@ -93,8 +99,8 @@ def run_ingestion(source_dir: str, index=None) -> IngestResult:
             files_processed=files_processed
         )
 
-    # Embed all chunks via HF Inference API
-    print("Embedding chunks via HuggingFace API...")
+    # Embed all chunks via Pinecone Inference API
+    print("Embedding chunks via Pinecone Inference API...")
     contents = [c.content for c in all_chunks]
     embeddings = embed_texts(contents)
 
