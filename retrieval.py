@@ -1,14 +1,12 @@
 """RAG retrieval pipeline: embed query -> search Pinecone -> assemble context."""
 
-from sentence_transformers import SentenceTransformer
-
 from models import RetrievalChunk, RetrievalResult
 
 SCORE_THRESHOLD = 0.35
 DEFAULT_TOP_K = 5
 
 
-def retrieve(query: str, model: SentenceTransformer, index,
+def retrieve(query: str, model, index,
              top_k: int = DEFAULT_TOP_K) -> RetrievalResult:
     """Embed query, search Pinecone, filter and assemble context.
 

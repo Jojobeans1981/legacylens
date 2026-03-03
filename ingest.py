@@ -4,9 +4,6 @@ import os
 import time
 from pathlib import Path
 
-from sentence_transformers import SentenceTransformer
-from pinecone import Pinecone, ServerlessSpec
-
 from chunker import chunk_fortran_file
 from models import Chunk, IngestResult
 from db import log_ingestion
@@ -26,6 +23,8 @@ def discover_fortran_files(source_dir: str) -> list[Path]:
 
 def connect_pinecone():
     """Connect to Pinecone and return the index."""
+    from pinecone import Pinecone, ServerlessSpec
+
     api_key = os.getenv("PINECONE_API_KEY", "")
     index_name = os.getenv("PINECONE_INDEX_NAME", "legacylens-blas")
 
@@ -47,8 +46,7 @@ def connect_pinecone():
     return pc.Index(index_name)
 
 
-def run_ingestion(source_dir: str, model: SentenceTransformer = None,
-                  index=None) -> IngestResult:
+def run_ingestion(source_dir: str, model=None, index=None) -> IngestResult:
     """Full ingestion pipeline: discover -> chunk -> embed -> upsert.
 
     Args:
@@ -60,6 +58,7 @@ def run_ingestion(source_dir: str, model: SentenceTransformer = None,
 
     # Load model if not provided
     if model is None:
+        from sentence_transformers import SentenceTransformer
         model = SentenceTransformer('all-MiniLM-L6-v2')
 
     # Connect to Pinecone if not provided
