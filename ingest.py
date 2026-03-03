@@ -7,6 +7,7 @@ from pathlib import Path
 from chunker import chunk_fortran_file
 from models import Chunk, IngestResult
 from db import log_ingestion
+from embed import embed_texts
 
 
 def discover_fortran_files(source_dir: str) -> list[Path]:
@@ -46,20 +47,14 @@ def connect_pinecone():
     return pc.Index(index_name)
 
 
-def run_ingestion(source_dir: str, model=None, index=None) -> IngestResult:
+def run_ingestion(source_dir: str, index=None) -> IngestResult:
     """Full ingestion pipeline: discover -> chunk -> embed -> upsert.
 
     Args:
         source_dir: Path to BLAS source directory
-        model: Pre-loaded SentenceTransformer model (or loads one)
         index: Pre-connected Pinecone index (or connects)
     """
     start_time = time.time()
-
-    # Load model if not provided
-    if model is None:
-        from sentence_transformers import SentenceTransformer
-        model = SentenceTransformer('all-MiniLM-L6-v2')
 
     # Connect to Pinecone if not provided
     if index is None:
@@ -98,10 +93,10 @@ def run_ingestion(source_dir: str, model=None, index=None) -> IngestResult:
             files_processed=files_processed
         )
 
-    # Embed all chunks
-    print("Embedding chunks...")
+    # Embed all chunks via HF Inference API
+    print("Embedding chunks via HuggingFace API...")
     contents = [c.content for c in all_chunks]
-    embeddings = model.encode(contents, batch_size=64, show_progress_bar=True)
+    embeddings = embed_texts(contents)
 
     # Upsert to Pinecone in batches
     print("Upserting to Pinecone...")
@@ -114,7 +109,7 @@ def run_ingestion(source_dir: str, model=None, index=None) -> IngestResult:
             embedding = embeddings[i]
             vectors.append({
                 "id": f"chunk_{i}",
-                "values": embedding.tolist(),
+                "values": embedding if isinstance(embedding, list) else embedding.tolist(),
                 "metadata": {
                     "file_path": chunk.file_path,
                     "start_line": chunk.start_line,

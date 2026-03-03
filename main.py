@@ -48,17 +48,8 @@ def _ensure_blas_source():
 
 
 def _init_worker(app):
-    """Background worker to load model and connect services."""
+    """Background worker to download BLAS source and connect services."""
     _ensure_blas_source()
-
-    print("Loading sentence-transformers model...")
-    try:
-        from sentence_transformers import SentenceTransformer
-        app.state.model = SentenceTransformer('all-MiniLM-L6-v2')
-        app.state.model_loaded = True
-        print("Model loaded successfully.")
-    except Exception as e:
-        print(f"Warning: Could not load model: {e}")
 
     print("Connecting to Pinecone...")
     try:
@@ -72,8 +63,6 @@ def _init_worker(app):
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Start background init and yield immediately so the port opens fast."""
-    app.state.model = None
-    app.state.model_loaded = False
     app.state.index = None
     app.state.index_connected = False
 
@@ -109,7 +98,7 @@ async def serve_dashboard():
 async def health():
     return HealthResponse(
         status="ok",
-        model_loaded=getattr(app.state, "model_loaded", False),
+        model_loaded=True,  # Using HF Inference API, always available
         index_connected=getattr(app.state, "index_connected", False),
     )
 
@@ -132,7 +121,6 @@ async def ingest(request: Request):
     try:
         result = run_ingestion(
             source_dir=source_dir,
-            model=app.state.model,
             index=app.state.index,
         )
         return result.model_dump()
@@ -147,15 +135,14 @@ async def _handle_query(request: QueryRequest, mode: str):
     """Common handler for all query modes. Returns streaming SSE response."""
     start_time = time.time()
 
-    if not app.state.model or not app.state.index:
+    if not app.state.index:
         raise HTTPException(status_code=503,
-                            detail="Model or index not ready. Run /ingest first.")
+                            detail="Pinecone index not ready. Please wait for startup.")
 
     # Retrieval
     try:
         retrieval_result = retrieve(
             query=request.query,
-            model=app.state.model,
             index=app.state.index,
         )
     except Exception as e:

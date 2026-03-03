@@ -2,7 +2,7 @@ services:
   - type: web
     name: legacylens
     env: python
-    buildCommand: "pip install -r requirements.txt && python -c \"from sentence_transformers import SentenceTransformer; SentenceTransformer('all-MiniLM-L6-v2')\""
+    buildCommand: "pip install -r requirements.txt"
     startCommand: "uvicorn main:app --host 0.0.0.0 --port $PORT"
     envVars:
       - key: PINECONE_API_KEY

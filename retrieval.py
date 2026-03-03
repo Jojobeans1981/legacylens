@@ -1,26 +1,26 @@
 """RAG retrieval pipeline: embed query -> search Pinecone -> assemble context."""
 
 from models import RetrievalChunk, RetrievalResult
+from embed import embed_query
 
 SCORE_THRESHOLD = 0.35
 DEFAULT_TOP_K = 5
 
 
-def retrieve(query: str, model, index,
+def retrieve(query: str, index,
              top_k: int = DEFAULT_TOP_K) -> RetrievalResult:
     """Embed query, search Pinecone, filter and assemble context.
 
     Args:
         query: Natural language query string
-        model: Pre-loaded SentenceTransformer model
         index: Connected Pinecone index
         top_k: Number of results to return after filtering
 
     Returns:
         RetrievalResult with chunks, assembled context, and found flag
     """
-    # Embed query
-    query_vector = model.encode(query).tolist()
+    # Embed query via HF Inference API
+    query_vector = embed_query(query)
 
     # Query Pinecone (fetch extra to allow for filtering)
     results = index.query(
