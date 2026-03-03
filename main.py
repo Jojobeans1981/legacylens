@@ -111,6 +111,14 @@ async def health():
     )
 
 
+@app.get("/debug/env")
+async def debug_env():
+    return {
+        "SOURCE_DIRS": os.getenv("SOURCE_DIRS", "NOT SET"),
+        "BLAS_SOURCE_DIR": os.getenv("BLAS_SOURCE_DIR", "NOT SET"),
+    }
+
+
 # ─── Ingestion ──────────────────────────────────────────────────────────────
 
 @app.post("/ingest")
