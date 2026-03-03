@@ -20,9 +20,33 @@ from llm import generate_answer
 from db import log_query, log_error, get_stats, get_connection
 
 
+def _ensure_blas_source():
+    """Download BLAS source if not present on disk."""
+    source_dir = os.getenv("BLAS_SOURCE_DIR", "/data/blas_source")
+    if os.path.isdir(source_dir) and any(
+        f.endswith('.f') for f in os.listdir(source_dir)
+        if os.path.isfile(os.path.join(source_dir, f))
+    ) or any(
+        os.path.isdir(os.path.join(source_dir, d)) for d in os.listdir(source_dir)
+        if not d.startswith('.')
+    ):
+        print(f"BLAS source found at {source_dir}")
+        return
+    print(f"BLAS source not found at {source_dir}, downloading...")
+    os.makedirs(source_dir, exist_ok=True)
+    import subprocess
+    subprocess.run(
+        ["bash", "-c",
+         f"curl -sL https://www.netlib.org/blas/blas.tgz | tar xz -C {source_dir}"],
+        check=True
+    )
+    print("BLAS source downloaded.")
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Load model and connect to Pinecone at startup."""
+    _ensure_blas_source()
     print("Loading sentence-transformers model...")
     try:
         from sentence_transformers import SentenceTransformer
