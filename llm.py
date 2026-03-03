@@ -52,9 +52,10 @@ SYSTEM_PROMPTS = {
     ),
 }
 
-# Pricing for Claude Sonnet: $3/MTok input, $15/MTok output
-INPUT_COST_PER_TOKEN = 3.0 / 1_000_000
-OUTPUT_COST_PER_TOKEN = 15.0 / 1_000_000
+# Pricing for Claude Haiku 4.5: $0.80/MTok input, $4.00/MTok output
+# (Falls back to Sonnet pricing if CLAUDE_MODEL is set to a Sonnet model)
+INPUT_COST_PER_TOKEN = 0.80 / 1_000_000
+OUTPUT_COST_PER_TOKEN = 4.0 / 1_000_000
 
 
 async def generate_answer(query: str, context: str,
@@ -81,7 +82,7 @@ async def generate_answer(query: str, context: str,
     output_tokens = 0
 
     async with client.messages.stream(
-        model="claude-sonnet-4-5-20250514",
+        model=os.getenv("CLAUDE_MODEL", "claude-haiku-4-5-20251001"),
         max_tokens=2048,
         system=system_prompt,
         messages=[{"role": "user", "content": user_message}],

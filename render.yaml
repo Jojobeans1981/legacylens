@@ -15,6 +15,8 @@ services:
         value: /data/legacylens.db
       - key: BLAS_SOURCE_DIR
         value: /data/blas_source
+      - key: CLAUDE_MODEL
+        value: claude-haiku-4-5-20251001
     disk:
       name: legacylens-data
       mountPath: /data

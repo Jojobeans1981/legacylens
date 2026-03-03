@@ -95,3 +95,51 @@
 - Chunker: 143/143 files parsed, 0 fallbacks ✅
 
 **Next step:** Deploy to Render with real API keys, run ingestion, test all 8 queries
+
+## 2026-03-02 18:30 Step 4: Ingestion Pipeline — Full Run
+**What I did:** Connected to Pinecone with real API key and ran full ingestion pipeline.
+
+**Results:**
+- 163 Fortran files discovered (143 .f + 12 .f90 + 8 test files in TESTING/)
+- 330 chunks generated (many test files contain multiple routines)
+- Embedding took ~40s, Pinecone upsert in 4 batches of 100
+- Total ingestion: 52.5 seconds
+- Pinecone index confirmed: 330 vectors, 384 dimensions, cosine metric
+
+**Next step:** Run test queries
+
+## 2026-03-02 18:40 Step 12: Test All 8 Required Queries
+**What I did:** Ran all 8 test queries against the local server with real API keys.
+
+**Problems encountered:**
+1. `claude-sonnet-4-5-20250514` model ID not available on this API key — returned 404.
+2. Changed to `claude-haiku-4-5-20251001` which is available and cost-effective.
+3. Made model configurable via `CLAUDE_MODEL` env var so Sonnet can be used when available.
+
+**Test Results:**
+
+| # | Query | Mode | Top Score | Chunks | Latency | Cost | Quality |
+|---|-------|------|-----------|--------|---------|------|---------|
+| 1 | Where is the main entry point? | query | 0.000 | 0 | 4039ms | $0.0008 | 3/5 — Correctly says no entry point found (BLAS is a library, no main) |
+| 2 | What subroutines modify matrix args? | query | 0.606 | 5 | 3843ms | $0.0032 | 5/5 — Lists STRMM, STRSM, CTRMM, etc. with correct citations |
+| 3 | Explain DGEMM | explain | 0.537 | 5 | 6481ms | $0.0043 | 5/5 — Excellent explanation of matrix multiplication |
+| 4 | Find all file I/O operations | query | 0.386 | 5 | 4667ms | $0.0031 | 4/5 — Finds WRITE ops in test files correctly |
+| 5 | Dependencies of DGEMV | query | 0.358 | 1 | 3418ms | $0.0013 | 3/5 — Limited by truncated content in metadata |
+| 6 | Error handling patterns | patterns | 0.361 | 4 | 9568ms | $0.0060 | 4/5 — Identifies XERBLA error handler pattern |
+| 7 | Generate docs for SGEMM | docgen | 0.352 | 1 | 11533ms | $0.0084 | 5/5 — Full Fortran comment block in correct format |
+| 8 | Translate DTRSM to NumPy | translate | 0.440 | 5 | 12781ms | $0.0090 | 5/5 — Side-by-side with scipy.linalg.solve_triangular |
+
+**Aggregate stats:**
+- Total cost: $0.0361
+- Total tokens: 11,608 in / 6,696 out
+- Average latency: 7,041ms
+- Retrieval precision @5: 6/8 queries retrieved highly relevant results (75%)
+- All 4 code features (explain, docgen, patterns, translate) work end-to-end
+
+**Decisions made:**
+- Q1 correctly returns no results — BLAS is a library with no main() entry point
+- Retrieval quality is good for targeted routine queries (Q2, Q3, Q8)
+- Broader queries (Q4, Q5, Q6) have lower scores but still find relevant content
+- Model configurable via CLAUDE_MODEL env var for flexibility
+
+**Next step:** Update cost analysis, commit, prepare for Render deployment
