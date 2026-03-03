@@ -1,0 +1,21 @@
+services:
+  - type: web
+    name: legacylens
+    env: python
+    buildCommand: pip install -r requirements.txt && python -c "from sentence_transformers import SentenceTransformer; SentenceTransformer('all-MiniLM-L6-v2')"
+    startCommand: bash -c "if [ ! -d /data/blas_source ]; then mkdir -p /data/blas_source && curl -sL https://www.netlib.org/blas/blas.tgz | tar xz -C /data/blas_source; fi && uvicorn main:app --host 0.0.0.0 --port $PORT"
+    envVars:
+      - key: PINECONE_API_KEY
+        sync: false
+      - key: ANTHROPIC_API_KEY
+        sync: false
+      - key: PINECONE_INDEX_NAME
+        value: legacylens-blas
+      - key: DB_PATH
+        value: /data/legacylens.db
+      - key: BLAS_SOURCE_DIR
+        value: /data/blas_source
+    disk:
+      name: legacylens-data
+      mountPath: /data
+      sizeGB: 1

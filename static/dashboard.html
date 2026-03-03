@@ -1,0 +1,354 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>LegacyLens — Dashboard</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        :root {
+            --bg: #0d1117; --surface: #161b22; --border: #30363d;
+            --text: #e6edf3; --text-dim: #8b949e; --accent: #58a6ff;
+            --green: #3fb950; --orange: #d29922; --red: #f85149; --purple: #bc8cff;
+        }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif;
+            background: var(--bg); color: var(--text); line-height: 1.6;
+        }
+        .container { max-width: 1400px; margin: 0 auto; padding: 24px; }
+        header {
+            display: flex; align-items: center; justify-content: space-between;
+            padding: 16px 0; border-bottom: 1px solid var(--border); margin-bottom: 24px;
+        }
+        header h1 { font-size: 24px; font-weight: 600; }
+        header h1 span { color: var(--accent); }
+        .header-links a {
+            color: var(--text-dim); text-decoration: none; margin-left: 16px;
+            font-size: 14px;
+        }
+        .header-links a:hover { color: var(--accent); }
+        .refresh-indicator {
+            font-size: 12px; color: var(--text-dim);
+            display: flex; align-items: center; gap: 6px;
+        }
+        .pulse {
+            width: 8px; height: 8px; border-radius: 50%;
+            background: var(--green); animation: pulse 2s infinite;
+        }
+        @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.4; } }
+
+        /* Metric cards */
+        .metrics-grid {
+            display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 16px; margin-bottom: 24px;
+        }
+        .metric-card {
+            background: var(--surface); border: 1px solid var(--border);
+            border-radius: 12px; padding: 20px;
+        }
+        .metric-label {
+            font-size: 12px; color: var(--text-dim); text-transform: uppercase;
+            letter-spacing: 0.5px; margin-bottom: 4px;
+        }
+        .metric-value { font-size: 28px; font-weight: 700; }
+        .metric-value.green { color: var(--green); }
+        .metric-value.accent { color: var(--accent); }
+        .metric-value.orange { color: var(--orange); }
+        .metric-value.purple { color: var(--purple); }
+
+        /* Sections */
+        .section {
+            background: var(--surface); border: 1px solid var(--border);
+            border-radius: 12px; padding: 20px; margin-bottom: 20px;
+        }
+        .section h2 {
+            font-size: 16px; font-weight: 600; margin-bottom: 16px;
+            display: flex; align-items: center; gap: 8px;
+        }
+
+        /* Histogram */
+        .histogram {
+            display: flex; align-items: flex-end; gap: 8px; height: 120px;
+            padding: 0 20px;
+        }
+        .hist-bar-container {
+            flex: 1; display: flex; flex-direction: column; align-items: center; gap: 4px;
+        }
+        .hist-bar {
+            width: 100%; border-radius: 4px 4px 0 0;
+            transition: height 0.5s ease;
+        }
+        .hist-label { font-size: 11px; color: var(--text-dim); }
+        .hist-count { font-size: 11px; color: var(--text); font-weight: 600; }
+
+        /* Tables */
+        table { width: 100%; border-collapse: collapse; font-size: 13px; }
+        th {
+            text-align: left; padding: 8px 12px; color: var(--text-dim);
+            border-bottom: 1px solid var(--border); font-weight: 500;
+            text-transform: uppercase; font-size: 11px; letter-spacing: 0.5px;
+        }
+        td {
+            padding: 8px 12px; border-bottom: 1px solid rgba(48,54,61,0.5);
+            vertical-align: top;
+        }
+        tr:hover td { background: rgba(255,255,255,0.02); }
+        .badge {
+            display: inline-block; padding: 2px 8px; border-radius: 10px;
+            font-size: 11px; font-weight: 600;
+        }
+        .badge-query { background: rgba(88,166,255,0.15); color: var(--accent); }
+        .badge-explain { background: rgba(63,185,80,0.15); color: var(--green); }
+        .badge-docgen { background: rgba(188,140,255,0.15); color: var(--purple); }
+        .badge-patterns { background: rgba(210,153,34,0.15); color: var(--orange); }
+        .badge-translate { background: rgba(248,81,73,0.15); color: var(--red); }
+
+        .error-msg {
+            color: var(--red); font-family: monospace; font-size: 12px;
+            max-width: 400px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+        }
+        .ts { color: var(--text-dim); font-family: monospace; font-size: 12px; }
+        .query-text {
+            max-width: 300px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+        }
+        .two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+        @media (max-width: 900px) { .two-col { grid-template-columns: 1fr; } }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>Legacy<span>Lens</span> Dashboard</h1>
+            <div style="display:flex;align-items:center;gap:24px;">
+                <div class="refresh-indicator">
+                    <div class="pulse"></div>
+                    <span>Auto-refresh every 10s</span>
+                </div>
+                <div class="header-links">
+                    <a href="/">Query UI</a>
+                    <a href="/health">Health</a>
+                </div>
+            </div>
+        </header>
+
+        <!-- Metric cards -->
+        <div class="metrics-grid">
+            <div class="metric-card">
+                <div class="metric-label">Total Queries</div>
+                <div class="metric-value accent" id="totalQueries">—</div>
+            </div>
+            <div class="metric-card">
+                <div class="metric-label">Avg Latency (last 100)</div>
+                <div class="metric-value green" id="avgLatency">—</div>
+            </div>
+            <div class="metric-card">
+                <div class="metric-label">API Cost (Total)</div>
+                <div class="metric-value orange" id="totalCost">—</div>
+            </div>
+            <div class="metric-card">
+                <div class="metric-label">Chunks Indexed</div>
+                <div class="metric-value purple" id="chunksIndexed">—</div>
+            </div>
+            <div class="metric-card">
+                <div class="metric-label">Files Covered</div>
+                <div class="metric-value accent" id="filesCovered">—</div>
+            </div>
+        </div>
+
+        <!-- Score distribution -->
+        <div class="section">
+            <h2>Retrieval Score Distribution (Last 100 Queries)</h2>
+            <div class="histogram" id="histogram"></div>
+        </div>
+
+        <!-- Recent queries -->
+        <div class="section">
+            <h2>Recent Queries</h2>
+            <div style="overflow-x:auto;">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Time</th>
+                            <th>Query</th>
+                            <th>Mode</th>
+                            <th>Latency</th>
+                            <th>Cost</th>
+                            <th>Top Score</th>
+                            <th>Chunks</th>
+                        </tr>
+                    </thead>
+                    <tbody id="recentQueries"></tbody>
+                </table>
+            </div>
+        </div>
+
+        <div class="two-col">
+            <!-- Errors -->
+            <div class="section">
+                <h2>Error Log (Last 10)</h2>
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Time</th>
+                            <th>Endpoint</th>
+                            <th>Type</th>
+                            <th>Message</th>
+                        </tr>
+                    </thead>
+                    <tbody id="errorLog"></tbody>
+                </table>
+                <p id="noErrors" style="color:var(--text-dim);font-size:13px;padding:12px;">No errors recorded.</p>
+            </div>
+
+            <!-- Ingestion history -->
+            <div class="section">
+                <h2>Ingestion History</h2>
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Time</th>
+                            <th>Files</th>
+                            <th>Chunks</th>
+                            <th>Duration</th>
+                        </tr>
+                    </thead>
+                    <tbody id="ingestionHistory"></tbody>
+                </table>
+                <p id="noIngestion" style="color:var(--text-dim);font-size:13px;padding:12px;">No ingestion runs yet.</p>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const COLORS = ['#f85149', '#d29922', '#58a6ff', '#3fb950', '#bc8cff'];
+
+        async function fetchStats() {
+            try {
+                const resp = await fetch('/api/stats');
+                if (!resp.ok) return;
+                const data = await resp.json();
+                updateDashboard(data);
+            } catch (e) {
+                console.error('Failed to fetch stats:', e);
+            }
+        }
+
+        function updateDashboard(data) {
+            // Metric cards
+            document.getElementById('totalQueries').textContent = data.total_queries.toLocaleString();
+            document.getElementById('avgLatency').textContent = data.avg_latency_ms.toFixed(0) + 'ms';
+            document.getElementById('totalCost').textContent = '$' + data.total_cost_usd.toFixed(4);
+            document.getElementById('chunksIndexed').textContent = data.chunks_indexed.toLocaleString();
+            document.getElementById('filesCovered').textContent = data.files_covered.toLocaleString();
+
+            // Histogram
+            renderHistogram(data.score_distribution);
+
+            // Recent queries
+            renderRecentQueries(data.recent_queries);
+
+            // Errors
+            renderErrors(data.errors);
+
+            // Ingestion history
+            renderIngestionHistory(data.ingestion_history);
+        }
+
+        function renderHistogram(distribution) {
+            const container = document.getElementById('histogram');
+            if (!distribution || distribution.length === 0) {
+                container.innerHTML = '<p style="color:var(--text-dim);font-size:13px;">No data yet.</p>';
+                return;
+            }
+            const maxCount = Math.max(...distribution.map(d => d.count), 1);
+            container.innerHTML = distribution.map((d, i) => {
+                const height = Math.max((d.count / maxCount) * 100, 2);
+                return `
+                    <div class="hist-bar-container">
+                        <div class="hist-count">${d.count}</div>
+                        <div class="hist-bar" style="height:${height}px;background:${COLORS[i]}"></div>
+                        <div class="hist-label">${d.range}</div>
+                    </div>
+                `;
+            }).join('');
+        }
+
+        function renderRecentQueries(queries) {
+            const tbody = document.getElementById('recentQueries');
+            if (!queries || queries.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="7" style="color:var(--text-dim)">No queries yet.</td></tr>';
+                return;
+            }
+            tbody.innerHTML = queries.map(q => `
+                <tr>
+                    <td class="ts">${formatTime(q.timestamp)}</td>
+                    <td class="query-text" title="${escapeAttr(q.query)}">${escapeHtml(q.query)}</td>
+                    <td><span class="badge badge-${q.mode}">${q.mode}</span></td>
+                    <td>${q.latency_ms}ms</td>
+                    <td>$${(q.cost_usd || 0).toFixed(4)}</td>
+                    <td>${q.top_score ? (q.top_score * 100).toFixed(0) + '%' : '—'}</td>
+                    <td>${q.chunks_retrieved || 0}</td>
+                </tr>
+            `).join('');
+        }
+
+        function renderErrors(errors) {
+            const tbody = document.getElementById('errorLog');
+            const noErrors = document.getElementById('noErrors');
+            if (!errors || errors.length === 0) {
+                tbody.innerHTML = '';
+                noErrors.style.display = 'block';
+                return;
+            }
+            noErrors.style.display = 'none';
+            tbody.innerHTML = errors.map(e => `
+                <tr>
+                    <td class="ts">${formatTime(e.timestamp)}</td>
+                    <td>${escapeHtml(e.endpoint || '')}</td>
+                    <td>${escapeHtml(e.error_type || '')}</td>
+                    <td class="error-msg" title="${escapeAttr(e.error_message)}">${escapeHtml(e.error_message || '')}</td>
+                </tr>
+            `).join('');
+        }
+
+        function renderIngestionHistory(ingestions) {
+            const tbody = document.getElementById('ingestionHistory');
+            const noIngestion = document.getElementById('noIngestion');
+            if (!ingestions || ingestions.length === 0) {
+                tbody.innerHTML = '';
+                noIngestion.style.display = 'block';
+                return;
+            }
+            noIngestion.style.display = 'none';
+            tbody.innerHTML = ingestions.map(ing => `
+                <tr>
+                    <td class="ts">${formatTime(ing.timestamp)}</td>
+                    <td>${ing.file_count}</td>
+                    <td>${ing.chunk_count}</td>
+                    <td>${ing.duration_seconds.toFixed(1)}s</td>
+                </tr>
+            `).join('');
+        }
+
+        function formatTime(isoStr) {
+            if (!isoStr) return '—';
+            const d = new Date(isoStr);
+            return d.toLocaleString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+        }
+
+        function escapeHtml(text) {
+            const div = document.createElement('div');
+            div.textContent = text || '';
+            return div.innerHTML;
+        }
+
+        function escapeAttr(text) {
+            return (text || '').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+        }
+
+        // Initial fetch + auto-refresh
+        fetchStats();
+        setInterval(fetchStats, 10000);
+    </script>
+</body>
+</html>

@@ -1,0 +1,8 @@
+fastapi
+uvicorn[standard]
+sentence-transformers
+pinecone
+anthropic
+httpx
+python-dotenv
+aiofiles
