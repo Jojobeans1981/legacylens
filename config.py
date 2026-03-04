@@ -8,7 +8,7 @@ CACHE_TTL = int(os.getenv("CACHE_TTL", "3600"))  # seconds
 
 # ─── Retrieval ───────────────────────────────────────────────────────────────
 SCORE_THRESHOLD = float(os.getenv("SCORE_THRESHOLD", "0.35"))
-DEFAULT_TOP_K = int(os.getenv("DEFAULT_TOP_K", "3"))
+DEFAULT_TOP_K = int(os.getenv("DEFAULT_TOP_K", "5"))
 
 # ─── LLM ─────────────────────────────────────────────────────────────────────
 CLAUDE_MODEL = os.getenv("CLAUDE_MODEL", "claude-haiku-4-5-20251001")
