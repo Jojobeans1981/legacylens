@@ -122,6 +122,51 @@
         }
         .two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
         @media (max-width: 900px) { .two-col { grid-template-columns: 1fr; } }
+
+        /* Animations */
+        @keyframes fadeInUp {
+            from { opacity: 0; transform: translateY(20px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        @keyframes fadeIn {
+            from { opacity: 0; }
+            to { opacity: 1; }
+        }
+        header { animation: fadeIn 0.4s ease-out; }
+        .metric-card {
+            animation: fadeInUp 0.5s ease-out both;
+            transition: transform 0.25s ease, box-shadow 0.25s ease, border-color 0.25s ease;
+        }
+        .metric-card:nth-child(1) { animation-delay: 0.1s; }
+        .metric-card:nth-child(2) { animation-delay: 0.15s; }
+        .metric-card:nth-child(3) { animation-delay: 0.2s; }
+        .metric-card:nth-child(4) { animation-delay: 0.25s; }
+        .metric-card:nth-child(5) { animation-delay: 0.3s; }
+        .metric-card:nth-child(6) { animation-delay: 0.35s; }
+        .metric-card:nth-child(7) { animation-delay: 0.4s; }
+        .metric-card:hover {
+            transform: translateY(-4px);
+            box-shadow: 0 8px 24px rgba(0,0,0,0.3);
+            border-color: var(--accent);
+        }
+        .charts-grid { animation: fadeInUp 0.5s ease-out 0.3s both; }
+        .section { animation: fadeInUp 0.4s ease-out both; }
+        .hist-bar { transition: height 0.8s cubic-bezier(0.4, 0, 0.2, 1); }
+        .header-links a { transition: color 0.2s, transform 0.2s; display: inline-block; }
+        .header-links a:hover { transform: translateY(-1px); }
+        header::after {
+            content: ''; display: block; position: absolute; bottom: -1px; left: 0; right: 0;
+            height: 2px;
+            background: linear-gradient(90deg, var(--accent), var(--purple), var(--green), var(--accent));
+            background-size: 300% 100%;
+            animation: gradientSlide 4s ease infinite;
+        }
+        header { position: relative; }
+        @keyframes gradientSlide {
+            0% { background-position: 0% 50%; }
+            50% { background-position: 100% 50%; }
+            100% { background-position: 0% 50%; }
+        }
     </style>
 </head>
 <body>
@@ -315,13 +360,38 @@
             }
         }
 
+        function animateValue(el, end, suffix = '', prefix = '', duration = 800) {
+            const start = 0;
+            const startTime = performance.now();
+            function update(currentTime) {
+                const elapsed = currentTime - startTime;
+                const progress = Math.min(elapsed / duration, 1);
+                const eased = 1 - Math.pow(1 - progress, 3); // ease-out cubic
+                const current = Math.floor(start + (end - start) * eased);
+                el.textContent = prefix + current.toLocaleString() + suffix;
+                if (progress < 1) requestAnimationFrame(update);
+                else el.textContent = prefix + end.toLocaleString() + suffix;
+            }
+            requestAnimationFrame(update);
+        }
+
+        let firstLoad = true;
+
         function updateDashboard(data) {
-            // Metric cards
-            document.getElementById('totalQueries').textContent = data.total_queries.toLocaleString();
-            document.getElementById('avgLatency').textContent = data.avg_latency_ms.toFixed(0) + 'ms';
+            // Metric cards with count-up on first load
+            if (firstLoad) {
+                animateValue(document.getElementById('totalQueries'), data.total_queries);
+                animateValue(document.getElementById('avgLatency'), Math.round(data.avg_latency_ms), 'ms');
+                animateValue(document.getElementById('chunksIndexed'), data.chunks_indexed);
+                animateValue(document.getElementById('filesCovered'), data.files_covered);
+                firstLoad = false;
+            } else {
+                document.getElementById('totalQueries').textContent = data.total_queries.toLocaleString();
+                document.getElementById('avgLatency').textContent = data.avg_latency_ms.toFixed(0) + 'ms';
+                document.getElementById('chunksIndexed').textContent = data.chunks_indexed.toLocaleString();
+                document.getElementById('filesCovered').textContent = data.files_covered.toLocaleString();
+            }
             document.getElementById('totalCost').textContent = '$' + data.total_cost_usd.toFixed(4);
-            document.getElementById('chunksIndexed').textContent = data.chunks_indexed.toLocaleString();
-            document.getElementById('filesCovered').textContent = data.files_covered.toLocaleString();
             document.getElementById('avgScore').textContent = data.avg_score ? (data.avg_score * 100).toFixed(0) + '%' : '\u2014';
             const totalTok = (data.total_input_tokens || 0) + (data.total_output_tokens || 0);
             document.getElementById('totalTokens').textContent = totalTok > 1000 ? (totalTok / 1000).toFixed(1) + 'K' : totalTok.toLocaleString();

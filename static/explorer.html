@@ -201,6 +201,57 @@
         }
         .close-compare:hover { color: var(--text); border-color: var(--text-dim); }
         .diff-highlight { color: var(--orange); font-weight: 700; }
+
+        /* Animations */
+        @keyframes fadeInUp {
+            from { opacity: 0; transform: translateY(20px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        @keyframes fadeIn {
+            from { opacity: 0; }
+            to { opacity: 1; }
+        }
+        @keyframes slideDown {
+            from { opacity: 0; transform: translateY(-10px); max-height: 0; }
+            to { opacity: 1; transform: translateY(0); max-height: 2000px; }
+        }
+        @keyframes countUp { from { opacity: 0; transform: scale(0.5); } to { opacity: 1; transform: scale(1); } }
+        header { animation: fadeIn 0.4s ease-out; }
+        .stats-row { animation: fadeIn 0.5s ease-out 0.1s both; }
+        .stat-chip { transition: transform 0.2s ease, box-shadow 0.2s ease; }
+        .stat-chip:hover { transform: translateY(-2px); box-shadow: 0 4px 12px rgba(0,0,0,0.2); }
+        .stat-chip .count { animation: countUp 0.4s ease-out 0.5s both; }
+        .controls { animation: fadeInUp 0.4s ease-out 0.15s both; }
+        .section { animation: fadeInUp 0.5s ease-out 0.2s both; }
+        .tab { transition: all 0.2s ease; }
+        .tab:hover { transform: translateY(-1px); }
+        .compare-bar.visible { animation: slideDown 0.3s ease-out; }
+        .compare-panel.visible { animation: fadeInUp 0.4s ease-out; }
+        .compare-card { transition: transform 0.2s ease, box-shadow 0.2s ease; }
+        .compare-card:hover { transform: translateY(-3px); box-shadow: 0 8px 24px rgba(0,0,0,0.3); }
+        .compare-metric { transition: transform 0.2s ease; }
+        .compare-metric:hover { transform: scale(1.05); }
+        tr { animation: fadeIn 0.3s ease-out; }
+        .dead-badge { animation: fadeIn 0.3s ease-out; }
+        .page-btn { transition: all 0.2s ease; }
+        .page-btn:hover:not(:disabled) { transform: translateY(-1px); }
+        .compare-btn { transition: all 0.2s ease; }
+        .compare-btn:hover:not(:disabled) { transform: translateY(-1px); box-shadow: 0 4px 12px rgba(31,111,235,0.3); }
+        .header-links a { transition: color 0.2s, transform 0.2s; display: inline-block; }
+        .header-links a:hover { transform: translateY(-1px); }
+        header::after {
+            content: ''; display: block; position: absolute; bottom: -1px; left: 0; right: 0;
+            height: 2px;
+            background: linear-gradient(90deg, var(--accent), var(--purple), var(--green), var(--accent));
+            background-size: 300% 100%;
+            animation: gradientSlide 4s ease infinite;
+        }
+        header { position: relative; }
+        @keyframes gradientSlide {
+            0% { background-position: 0% 50%; }
+            50% { background-position: 100% 50%; }
+            100% { background-position: 0% 50%; }
+        }
     </style>
 </head>
 <body>

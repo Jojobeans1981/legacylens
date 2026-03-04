@@ -95,6 +95,32 @@
             text-align: center; color: var(--text-dim);
         }
         .empty-msg h2 { font-size: 20px; color: var(--text); margin-bottom: 8px; }
+
+        /* Animations */
+        @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+        @keyframes fadeInUp { from { opacity: 0; transform: translateY(20px); } to { opacity: 1; transform: translateY(0); } }
+        @keyframes slideInRight { from { opacity: 0; transform: translateX(20px); } to { opacity: 1; transform: translateX(0); } }
+        header { animation: fadeIn 0.4s ease-out; }
+        .toolbar { animation: fadeInUp 0.4s ease-out 0.2s both; }
+        .info-panel { animation: slideInRight 0.3s ease-out; }
+        .search-btn { transition: background 0.2s, transform 0.15s; }
+        .search-btn:hover { transform: translateY(-1px); }
+        .legend { animation: fadeIn 0.4s ease-out 0.3s both; }
+        .header-links a { transition: color 0.2s, transform 0.2s; display: inline-block; }
+        .header-links a:hover { transform: translateY(-1px); }
+        header::after {
+            content: ''; display: block; position: absolute; bottom: -1px; left: 0; right: 0;
+            height: 2px;
+            background: linear-gradient(90deg, var(--accent), var(--purple), var(--green), var(--accent));
+            background-size: 300% 100%;
+            animation: gradientSlide 4s ease infinite;
+        }
+        header { position: relative; }
+        @keyframes gradientSlide {
+            0% { background-position: 0% 50%; }
+            50% { background-position: 100% 50%; }
+            100% { background-position: 0% 50%; }
+        }
     </style>
 </head>
 <body>
