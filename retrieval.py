@@ -1,8 +1,24 @@
 """RAG retrieval pipeline: embed query -> search Pinecone -> assemble context."""
 
+import re
+
 from models import RetrievalChunk, RetrievalResult
 from embed import embed_query
 from config import SCORE_THRESHOLD, DEFAULT_TOP_K
+
+# Pattern to detect routine names in queries (uppercase Fortran identifiers)
+_ROUTINE_PATTERN = re.compile(r'\b([A-Z][A-Z0-9]{2,})\b')
+
+
+def _extract_routine_name(query: str) -> str | None:
+    """Try to extract a specific routine name from the query."""
+    matches = _ROUTINE_PATTERN.findall(query.upper())
+    # Filter out common English words that match the pattern
+    stopwords = {'THE', 'AND', 'FOR', 'HOW', 'WHAT', 'DOES', 'WHY', 'ALL', 'ARE', 'NOT', 'CAN', 'HAS'}
+    for m in matches:
+        if m not in stopwords and len(m) >= 3:
+            return m
+    return None
 
 
 def retrieve(query: str, index,
@@ -20,12 +36,27 @@ def retrieve(query: str, index,
     # Embed query via Pinecone Inference API (cached)
     query_vector = list(embed_query(query))
 
-    # Query Pinecone (fetch extra to allow for filtering)
+    # Try exact routine match first
+    routine_name = _extract_routine_name(query)
+    filter_dict = None
+    if routine_name:
+        filter_dict = {"routine_name": {"$eq": routine_name}}
+
+    # Query Pinecone — try with filter first, fall back to unfiltered
     results = index.query(
         vector=query_vector,
         top_k=top_k + 3,
-        include_metadata=True
+        include_metadata=True,
+        filter=filter_dict,
     )
+
+    # If filtered search returned no results, retry without filter
+    if filter_dict and not results.get("matches"):
+        results = index.query(
+            vector=query_vector,
+            top_k=top_k + 3,
+            include_metadata=True,
+        )
 
     # Filter by score threshold and take top_k
     chunks = []
@@ -49,7 +80,7 @@ def retrieve(query: str, index,
         return RetrievalResult(chunks=[], context="", found=False)
 
     # Assemble context string (cap per-chunk to reduce input tokens)
-    MAX_CONTEXT_PER_CHUNK = 500
+    MAX_CONTEXT_PER_CHUNK = 800
     context_parts = []
     for chunk in chunks:
         content = chunk.content[:MAX_CONTEXT_PER_CHUNK]
