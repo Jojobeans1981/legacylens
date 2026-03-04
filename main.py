@@ -1,5 +1,6 @@
 """LegacyLens — FastAPI application for RAG-powered BLAS codebase querying."""
 
+import collections
 import hashlib
 import json
 import os
@@ -12,12 +13,39 @@ from fastapi.responses import HTMLResponse, StreamingResponse, JSONResponse
 
 load_dotenv()
 
-STATIC_DIR = os.path.join(os.path.dirname(__file__), "static")
+from config import (
+    CACHE_MAX_SIZE, CACHE_TTL, SOURCE_DIRS as DEFAULT_SOURCE_DIRS,
+    RATE_LIMIT_RPM, MAX_QUERY_LENGTH, MAX_CONVERSATION_TURNS,
+    MAX_CALL_GRAPH_DEPTH, MAX_SEARCH_LENGTH, MAX_ROUTINE_LENGTH,
+    ALLOWED_LIBRARIES,
+)
 
-# ─── Query Cache ─────────────────────────────────────────────────────────────
-CACHE_MAX_SIZE = 500
-CACHE_TTL = 3600  # 1 hour
+STATIC_DIR = os.path.join(os.path.dirname(__file__), "static")
 _query_cache: dict[str, dict] = {}
+
+# ─── Rate Limiting ───────────────────────────────────────────────────────────
+_rate_limits: dict[str, collections.deque] = {}
+
+
+def _check_rate_limit(client_ip: str) -> bool:
+    """Sliding window rate limiter. Returns True if request is allowed."""
+    now = time.time()
+    window = _rate_limits.setdefault(client_ip, collections.deque())
+    # Purge entries older than 60 seconds
+    while window and window[0] < now - 60:
+        window.popleft()
+    if len(window) >= RATE_LIMIT_RPM:
+        return False
+    window.append(now)
+    return True
+
+
+def _require_api_key(request: Request):
+    """Validate API key from X-API-Key header."""
+    api_key = request.headers.get("X-API-Key", "")
+    expected_key = os.getenv("ANTHROPIC_API_KEY", "")
+    if not api_key or api_key != expected_key:
+        raise HTTPException(status_code=401, detail="Invalid API key")
 
 
 def _cache_key(mode: str, query: str) -> str:
@@ -66,7 +94,7 @@ def _ensure_sources():
     """Download BLAS and LAPACK source if not present on disk."""
     import subprocess
 
-    source_dirs = os.getenv("SOURCE_DIRS", "./data/blas_source,./data/lapack_source,./data/scalapack_source").split(",")
+    source_dirs = DEFAULT_SOURCE_DIRS.split(",")
 
     for source_dir in source_dirs:
         source_dir = source_dir.strip()
@@ -165,9 +193,9 @@ async def health():
 
 
 @app.get("/debug/env")
-async def debug_env():
-    import subprocess
-    resolved = os.getenv("SOURCE_DIRS", "./data/blas_source,./data/lapack_source,./data/scalapack_source").split(",")
+async def debug_env(request: Request):
+    _require_api_key(request)
+    resolved = DEFAULT_SOURCE_DIRS.split(",")
     dir_status = {}
     for d in resolved:
         d = d.strip()
@@ -177,11 +205,8 @@ async def debug_env():
         else:
             dir_status[d] = "does not exist"
     return {
-        "SOURCE_DIRS_env": os.getenv("SOURCE_DIRS", "NOT SET"),
-        "BLAS_SOURCE_DIR_env": os.getenv("BLAS_SOURCE_DIR", "NOT SET"),
         "resolved_dirs": resolved,
         "dir_status": dir_status,
-        "all_env_keys": sorted([k for k in os.environ.keys() if not k.startswith("_")]),
     }
 
 
@@ -197,6 +222,10 @@ async def cache_stats():
 @app.get("/api/routines")
 async def api_routines(library: str = None, search: str = None):
     from db import get_routines
+    if library and library not in ALLOWED_LIBRARIES:
+        raise HTTPException(status_code=422, detail=f"Invalid library. Must be one of: {', '.join(ALLOWED_LIBRARIES)}")
+    if search and len(search) > MAX_SEARCH_LENGTH:
+        raise HTTPException(status_code=422, detail=f"Search query too long (max {MAX_SEARCH_LENGTH} chars)")
     try:
         routines = get_routines(library=library, search=search)
         return JSONResponse(content=routines)
@@ -207,8 +236,12 @@ async def api_routines(library: str = None, search: str = None):
 @app.get("/api/call-graph")
 async def api_call_graph(routine: str = None, depth: int = 2):
     from db import get_call_graph
+    if routine and len(routine) > MAX_ROUTINE_LENGTH:
+        raise HTTPException(status_code=422, detail=f"Routine name too long (max {MAX_ROUTINE_LENGTH} chars)")
+    if depth < 1 or depth > MAX_CALL_GRAPH_DEPTH:
+        raise HTTPException(status_code=422, detail=f"Depth must be between 1 and {MAX_CALL_GRAPH_DEPTH}")
     try:
-        graph = get_call_graph(routine=routine, depth=min(depth, 4))
+        graph = get_call_graph(routine=routine, depth=depth)
         return JSONResponse(content=graph)
     except Exception as e:
         return JSONResponse(content={"error": str(e)}, status_code=500)
@@ -221,17 +254,14 @@ async def ingest(request: Request):
     from ingest import run_ingestion
     from db import log_error
 
-    api_key = request.headers.get("X-API-Key", "")
-    expected_key = os.getenv("ANTHROPIC_API_KEY", "")
-    if not api_key or api_key != expected_key:
-        raise HTTPException(status_code=401, detail="Invalid API key")
+    _require_api_key(request)
 
     try:
         _ensure_sources()
     except Exception as e:
         print(f"Warning: source download failed: {e}")
 
-    source_dirs_raw = os.getenv("SOURCE_DIRS", "./data/blas_source,./data/lapack_source,./data/scalapack_source").split(",")
+    source_dirs_raw = DEFAULT_SOURCE_DIRS.split(",")
     source_dirs = [d.strip() for d in source_dirs_raw if os.path.isdir(d.strip())]
     print(f"Resolved dirs: {source_dirs}")
     if not source_dirs:
@@ -350,8 +380,8 @@ async def _handle_query(query_request, mode: str):
                 cost_usd=cost_usd,
                 answer_preview=answer_text[:200],
             )
-        except Exception:
-            pass
+        except Exception as e:
+            print(f"Warning: query log failed: {e}")
 
     return StreamingResponse(
         event_stream(),
@@ -364,39 +394,50 @@ async def _handle_query(query_request, mode: str):
     )
 
 
+async def _parse_query_request(request: Request):
+    """Parse, validate, and rate-limit query request."""
+    from models import QueryRequest
+    from pydantic import ValidationError
+
+    client_ip = request.client.host if request.client else "unknown"
+    if not _check_rate_limit(client_ip):
+        raise HTTPException(status_code=429, detail=f"Rate limit exceeded ({RATE_LIMIT_RPM} requests/min)")
+
+    body = await request.json()
+    try:
+        return QueryRequest(**body)
+    except ValidationError as e:
+        raise HTTPException(status_code=422, detail=e.errors())
+
+
 @app.post("/query")
 async def query_endpoint(request: Request):
-    from models import QueryRequest
-    body = await request.json()
-    return await _handle_query(QueryRequest(**body), "query")
+    qr = await _parse_query_request(request)
+    return await _handle_query(qr, "query")
 
 
 @app.post("/explain")
 async def explain_endpoint(request: Request):
-    from models import QueryRequest
-    body = await request.json()
-    return await _handle_query(QueryRequest(**body), "explain")
+    qr = await _parse_query_request(request)
+    return await _handle_query(qr, "explain")
 
 
 @app.post("/docgen")
 async def docgen_endpoint(request: Request):
-    from models import QueryRequest
-    body = await request.json()
-    return await _handle_query(QueryRequest(**body), "docgen")
+    qr = await _parse_query_request(request)
+    return await _handle_query(qr, "docgen")
 
 
 @app.post("/translate")
 async def translate_endpoint(request: Request):
-    from models import QueryRequest
-    body = await request.json()
-    return await _handle_query(QueryRequest(**body), "translate")
+    qr = await _parse_query_request(request)
+    return await _handle_query(qr, "translate")
 
 
 @app.post("/patterns")
 async def patterns_endpoint(request: Request):
-    from models import QueryRequest
-    body = await request.json()
-    return await _handle_query(QueryRequest(**body), "patterns")
+    qr = await _parse_query_request(request)
+    return await _handle_query(qr, "patterns")
 
 
 # ─── Dashboard API ──────────────────────────────────────────────────────────

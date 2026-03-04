@@ -1,7 +1,9 @@
 """Pydantic models for LegacyLens."""
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field, field_validator
 from typing import Optional
+
+from config import MAX_QUERY_LENGTH, MAX_CONVERSATION_TURNS, MAX_CONVERSATION_CONTENT_LENGTH
 
 
 class Chunk(BaseModel):
@@ -21,10 +23,33 @@ class IngestResult(BaseModel):
 
 
 class QueryRequest(BaseModel):
-    query: str
-    routine: Optional[str] = None
-    file: Optional[str] = None
+    query: str = Field(..., min_length=1, max_length=MAX_QUERY_LENGTH)
+    routine: Optional[str] = Field(None, max_length=50)
+    file: Optional[str] = Field(None, max_length=500)
     conversation_history: Optional[list[dict]] = None
+
+    @field_validator("query")
+    @classmethod
+    def strip_and_validate_query(cls, v: str) -> str:
+        v = v.strip()
+        if not v:
+            raise ValueError("Query cannot be empty")
+        return v
+
+    @field_validator("conversation_history")
+    @classmethod
+    def validate_conversation_history(cls, v):
+        if v is None:
+            return v
+        if len(v) > MAX_CONVERSATION_TURNS:
+            v = v[-MAX_CONVERSATION_TURNS:]
+        for turn in v:
+            if turn.get("role") not in ("user", "assistant"):
+                raise ValueError("Invalid role in conversation history")
+            content = turn.get("content")
+            if not isinstance(content, str) or len(content) > MAX_CONVERSATION_CONTENT_LENGTH:
+                raise ValueError("Invalid or oversized content in conversation history")
+        return v
 
 
 class RetrievalChunk(BaseModel):

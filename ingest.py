@@ -9,6 +9,7 @@ from chunker import chunk_fortran_file
 from models import Chunk, IngestResult
 from db import log_ingestion, log_routines, log_call_graph
 from embed import embed_texts
+from config import UPSERT_BATCH_SIZE, PINECONE_CLOUD, PINECONE_REGION, EMBED_DIMENSION
 
 
 def _parse_call_graph(chunks: list[Chunk]) -> list[tuple]:
@@ -43,7 +44,6 @@ def discover_fortran_files(source_dir: str) -> list[Path]:
 def connect_pinecone():
     """Connect to Pinecone and return the index."""
     from pinecone import Pinecone, ServerlessSpec
-    from embed import EMBED_DIMENSION
 
     api_key = os.getenv("PINECONE_API_KEY", "")
     index_name = os.getenv("PINECONE_INDEX_NAME", "legacylens-blas")
@@ -64,7 +64,7 @@ def connect_pinecone():
         name=index_name,
         dimension=EMBED_DIMENSION,
         metric="cosine",
-        spec=ServerlessSpec(cloud="aws", region="us-east-1")
+        spec=ServerlessSpec(cloud=PINECONE_CLOUD, region=PINECONE_REGION)
     )
     time.sleep(5)
 
@@ -130,9 +130,8 @@ def run_ingestion(source_dirs: list[str], index=None) -> IngestResult:
 
     # Upsert to Pinecone in batches
     print("Upserting to Pinecone...")
-    batch_size = 100
-    for batch_start in range(0, len(all_chunks), batch_size):
-        batch_end = min(batch_start + batch_size, len(all_chunks))
+    for batch_start in range(0, len(all_chunks), UPSERT_BATCH_SIZE):
+        batch_end = min(batch_start + UPSERT_BATCH_SIZE, len(all_chunks))
         vectors = []
         for i in range(batch_start, batch_end):
             chunk = all_chunks[i]
@@ -150,8 +149,8 @@ def run_ingestion(source_dirs: list[str], index=None) -> IngestResult:
                 }
             })
         index.upsert(vectors=vectors)
-        print(f"  Upserted batch {batch_start // batch_size + 1}/"
-              f"{(len(all_chunks) + batch_size - 1) // batch_size}")
+        print(f"  Upserted batch {batch_start // UPSERT_BATCH_SIZE + 1}/"
+              f"{(len(all_chunks) + UPSERT_BATCH_SIZE - 1) // UPSERT_BATCH_SIZE}")
 
     # Populate routine index and call graph
     print("Building routine index and call graph...")

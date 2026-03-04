@@ -5,6 +5,8 @@ from typing import AsyncGenerator
 
 import anthropic
 
+from config import CLAUDE_MODEL, LLM_MAX_TOKENS, INPUT_COST_PER_MTOK, OUTPUT_COST_PER_MTOK
+
 
 SYSTEM_PROMPTS = {
     "query": (
@@ -13,7 +15,7 @@ SYSTEM_PROMPTS = {
         "using ONLY the provided code chunks. Cite every factual claim with "
         "[filename:start_line-end_line]. If the context does not contain enough "
         "information to answer, say so explicitly and suggest a more specific query. "
-        "Never invent code, function names, or line numbers."
+        "Never invent code, function names, or line numbers. Be concise."
     ),
     "explain": (
         "You are an expert Fortran and legacy systems engineer analyzing the BLAS "
@@ -21,7 +23,7 @@ SYSTEM_PROMPTS = {
         "operation, inputs, outputs, and algorithm of the code in the provided chunks. "
         "Use plain English accessible to a developer unfamiliar with Fortran. "
         "Cite every factual claim with [filename:start_line-end_line]. "
-        "Never invent code, function names, or line numbers."
+        "Never invent code, function names, or line numbers. Be concise."
     ),
     "docgen": (
         "You are an expert Fortran and legacy systems engineer analyzing the BLAS "
@@ -30,7 +32,7 @@ SYSTEM_PROMPTS = {
         "shown in the provided code chunks. Include: Purpose, Arguments (with types, "
         "dimensions, intent), Further Details, and References. "
         "Cite every factual claim with [filename:start_line-end_line]. "
-        "Never invent code, function names, or line numbers."
+        "Never invent code, function names, or line numbers. Be concise."
     ),
     "translate": (
         "You are an expert Fortran and legacy systems engineer analyzing the BLAS "
@@ -39,7 +41,7 @@ SYSTEM_PROMPTS = {
         "comparison explaining how each Fortran construct maps to Python. Include the "
         "NumPy/SciPy function call that replaces the BLAS routine if one exists. "
         "Cite every factual claim with [filename:start_line-end_line]. "
-        "Never invent code, function names, or line numbers."
+        "Never invent code, function names, or line numbers. Be concise."
     ),
     "patterns": (
         "You are an expert Fortran and legacy systems engineer analyzing the BLAS "
@@ -48,14 +50,23 @@ SYSTEM_PROMPTS = {
         "common patterns such as: argument validation, loop structures, special case "
         "handling, memory access patterns, and optimization techniques. "
         "Cite every factual claim with [filename:start_line-end_line]. "
-        "Never invent code, function names, or line numbers."
+        "Never invent code, function names, or line numbers. Be concise."
     ),
 }
 
-# Pricing for Claude Haiku 4.5: $0.80/MTok input, $4.00/MTok output
-# (Falls back to Sonnet pricing if CLAUDE_MODEL is set to a Sonnet model)
-INPUT_COST_PER_TOKEN = 0.80 / 1_000_000
-OUTPUT_COST_PER_TOKEN = 4.0 / 1_000_000
+_async_client = None
+
+
+def _get_async_client():
+    """Reuse a single AsyncAnthropic client to avoid connection overhead."""
+    global _async_client
+    if _async_client is None:
+        _async_client = anthropic.AsyncAnthropic(api_key=os.getenv("ANTHROPIC_API_KEY"))
+    return _async_client
+
+
+INPUT_COST_PER_TOKEN = INPUT_COST_PER_MTOK / 1_000_000
+OUTPUT_COST_PER_TOKEN = OUTPUT_COST_PER_MTOK / 1_000_000
 
 
 async def generate_answer(query: str, context: str,
@@ -66,7 +77,7 @@ async def generate_answer(query: str, context: str,
     Yields chunks of text as they arrive, then yields a final JSON metadata line
     prefixed with \\x00 containing token counts and cost.
     """
-    client = anthropic.AsyncAnthropic(api_key=os.getenv("ANTHROPIC_API_KEY"))
+    client = _get_async_client()
 
     system_prompt = SYSTEM_PROMPTS.get(mode, SYSTEM_PROMPTS["query"])
 
@@ -90,8 +101,8 @@ async def generate_answer(query: str, context: str,
     output_tokens = 0
 
     async with client.messages.stream(
-        model=os.getenv("CLAUDE_MODEL", "claude-haiku-4-5-20251001"),
-        max_tokens=2048,
+        model=CLAUDE_MODEL,
+        max_tokens=LLM_MAX_TOKENS,
         system=system_prompt,
         messages=messages,
     ) as stream:

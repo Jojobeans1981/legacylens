@@ -4,12 +4,11 @@ import sqlite3
 import os
 from datetime import datetime, timezone
 
-
-DB_PATH = os.getenv("DB_PATH", "./data/legacylens.db")
+from config import DB_PATH
 
 
 def _get_db_path() -> str:
-    return os.getenv("DB_PATH", DB_PATH)
+    return DB_PATH
 
 
 def get_connection() -> sqlite3.Connection:

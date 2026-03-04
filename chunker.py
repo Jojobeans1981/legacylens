@@ -3,6 +3,7 @@
 import re
 from pathlib import Path
 from models import Chunk
+from config import MAX_CHUNK_LINES, OVERLAP_LINES, FALLBACK_CHUNK_LINES
 
 # Regex patterns for Fortran routine boundaries
 ROUTINE_START = re.compile(
@@ -17,10 +18,6 @@ ROUTINE_END = re.compile(
 
 # Comment line patterns (Fortran 77 uses C/c/* in column 1, free-form uses !)
 COMMENT_LINE = re.compile(r'^[Cc*!]', re.MULTILINE)
-
-MAX_CHUNK_LINES = 500
-OVERLAP_LINES = 64
-FALLBACK_CHUNK_LINES = 400
 
 
 def _is_comment_line(line: str) -> bool:
@@ -92,10 +89,11 @@ def chunk_fortran_file(filepath: str | Path) -> list[Chunk]:
     # Read file, handling encoding issues
     try:
         content = filepath.read_text(encoding='utf-8', errors='replace')
-    except Exception:
+    except UnicodeDecodeError:
         try:
             content = filepath.read_text(encoding='latin-1', errors='replace')
-        except Exception:
+        except (OSError, UnicodeDecodeError) as e:
+            print(f"Warning: cannot read {filepath}: {e}")
             return []
 
     lines = content.split('\n')

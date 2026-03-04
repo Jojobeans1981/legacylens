@@ -2,9 +2,7 @@
 
 from models import RetrievalChunk, RetrievalResult
 from embed import embed_query
-
-SCORE_THRESHOLD = 0.35
-DEFAULT_TOP_K = 5
+from config import SCORE_THRESHOLD, DEFAULT_TOP_K
 
 
 def retrieve(query: str, index,

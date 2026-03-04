@@ -3,12 +3,9 @@
 import os
 import time
 
-_pc = None
+from config import EMBED_MODEL, EMBED_DIMENSION, EMBED_BATCH_SIZE, EMBED_MAX_RETRIES, EMBED_RATE_LIMIT_DELAY
 
-EMBED_MODEL = "multilingual-e5-large"
-EMBED_DIMENSION = 1024
-BATCH_SIZE = 20  # Small batches to stay under rate limits
-MAX_RETRIES = 5
+_pc = None
 
 
 def _get_client():
@@ -23,9 +20,9 @@ def embed_texts(texts: list[str]) -> list[list[float]]:
     """Embed a list of texts for indexing. Returns 1024-dim vectors."""
     pc = _get_client()
     results = []
-    for i in range(0, len(texts), BATCH_SIZE):
-        batch = texts[i:i + BATCH_SIZE]
-        for attempt in range(MAX_RETRIES):
+    for i in range(0, len(texts), EMBED_BATCH_SIZE):
+        batch = texts[i:i + EMBED_BATCH_SIZE]
+        for attempt in range(EMBED_MAX_RETRIES):
             try:
                 embeddings = pc.inference.embed(
                     model=EMBED_MODEL,
@@ -34,20 +31,24 @@ def embed_texts(texts: list[str]) -> list[list[float]]:
                 )
                 results.extend([e.values for e in embeddings])
                 break
+            except (ConnectionError, TimeoutError) as e:
+                wait = 30 * (attempt + 1)
+                print(f"  Connection error, retrying in {wait}s (attempt {attempt + 1}/{EMBED_MAX_RETRIES}): {e}")
+                time.sleep(wait)
             except Exception as e:
                 if "429" in str(e) or "RESOURCE_EXHAUSTED" in str(e):
                     wait = 30 * (attempt + 1)
-                    print(f"  Rate limited, waiting {wait}s (attempt {attempt + 1}/{MAX_RETRIES})...")
+                    print(f"  Rate limited, waiting {wait}s (attempt {attempt + 1}/{EMBED_MAX_RETRIES})...")
                     time.sleep(wait)
                 else:
                     raise
         else:
-            raise RuntimeError(f"Pinecone inference failed after {MAX_RETRIES} retries")
-        done = min(i + BATCH_SIZE, len(texts))
+            raise RuntimeError(f"Pinecone inference failed after {EMBED_MAX_RETRIES} retries")
+        done = min(i + EMBED_BATCH_SIZE, len(texts))
         print(f"  Embedded {done}/{len(texts)} chunks...")
         # Small delay between batches to avoid rate limits
         if done < len(texts):
-            time.sleep(2)
+            time.sleep(EMBED_RATE_LIMIT_DELAY)
     return results
 
 
