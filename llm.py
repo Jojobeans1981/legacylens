@@ -93,7 +93,7 @@ async def generate_answer(query: str, context: str,
     # Build messages list with conversation history
     messages = []
     if conversation_history:
-        for turn in conversation_history[-6:]:  # Keep last 3 exchanges
+        for turn in conversation_history[-6:]:  # Last 6 turns (3 exchanges)
             messages.append({"role": turn["role"], "content": turn["content"]})
     messages.append({"role": "user", "content": user_message})
 

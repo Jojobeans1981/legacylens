@@ -1,6 +1,8 @@
-# LegacyLens
+# GRIMOIRE
 
-A production-ready RAG (Retrieval-Augmented Generation) system that makes the BLAS (Basic Linear Algebra Subprograms) Fortran codebase queryable via natural language.
+**G**enerative **R**etrieval **I**ntelligence for **M**apping **O**ld **I**mperative **R**outine **E**ngineering
+
+A production-ready RAG system that makes BLAS, LAPACK, and ScaLAPACK Fortran codebases queryable via natural language.
 
 **Live demo:** https://legacylens-ycuy.onrender.com/
 **Dashboard:** https://legacylens-ycuy.onrender.com/dashboard
@@ -13,105 +15,104 @@ A production-ready RAG (Retrieval-Augmented Generation) system that makes the BL
 │ (index.html) │     │  (main.py)     │     │  Vector DB   │
 └──────────────┘     └───┬───────┬───┘     └──────────────┘
                          │       │
-                    ┌────▼──┐ ┌──▼─────────┐
-                    │SQLite │ │Claude Sonnet│
-                    │  DB   │ │   (LLM)    │
-                    └───────┘ └────────────┘
+                    ┌────▼──┐ ┌──▼──────────┐
+                    │SQLite │ │ Claude Haiku │
+                    │  DB   │ │   (LLM)     │
+                    └───────┘ └─────────────┘
 ```
 
 ### Pipeline Flow
 
-1. **Ingestion**: BLAS `.f` files → Fortran-aware chunker → Pinecone Inference embeddings → Pinecone upsert
-2. **Query**: Natural language → embed → Pinecone similarity search → context assembly → Claude Haiku streaming response
-3. **Observability**: All queries, costs, and errors logged to SQLite → real-time dashboard
+1. **Ingestion**: Fortran `.f`/`.f90` files → syntax-aware chunker → Pinecone Inference embeddings → Pinecone upsert → routine index + call graph
+2. **Query**: Natural language → embed → Pinecone cosine search → context assembly → Claude Haiku streaming response
+3. **Observability**: All queries, costs, and errors logged to SQLite → real-time dashboard with charts
 
 ## Stack
 
 | Layer | Technology |
 |-------|-----------|
-| Codebase | BLAS 3.12.0 Fortran (163 files, 71K LOC) |
+| Codebases | BLAS + LAPACK + ScaLAPACK (3,200+ files) |
 | Vector DB | Pinecone (serverless, cosine similarity) |
 | Embeddings | Pinecone Inference API (`multilingual-e5-large`, 1024-dim) |
-| Answer LLM | Claude Haiku 4.5 via Anthropic API |
+| Answer LLM | Claude Haiku 4.5 via Anthropic API (streaming SSE) |
 | Backend | Python 3.11+ / FastAPI / uvicorn |
-| Frontend | Vanilla HTML/CSS/JS (no build step) |
-| Database | SQLite (observability logging) |
-| Deployment | Render Web Service |
+| Frontend | Vanilla HTML/CSS/JS with marked.js, highlight.js, Chart.js, D3.js |
+| Database | SQLite (observability + routine index + call graph) |
+| Deployment | Render Web Service with persistent disk |
+| Config | Centralized `config.py` — all values env-overridable |
 
 ## Features
 
-- **Query**: Ask natural language questions about BLAS code
-- **Explain**: Get plain-English explanations of Fortran routines
-- **Docs**: Auto-generate documentation headers for routines
-- **Patterns**: Analyze coding patterns and conventions
-- **Translate**: Get Python/NumPy equivalents of Fortran code
-- **Dashboard**: Real-time observability with cost tracking
+- **5 Query Modes**: Query, Explain, Docs, Patterns, Translate — all with streaming SSE
+- **Routine Explorer**: Searchable/filterable table of all indexed routines with library tabs
+- **Call Graph**: Interactive D3.js force-directed graph of routine call dependencies
+- **Translation View**: Side-by-side Fortran → Python/NumPy comparison
+- **Conversation Memory**: Multi-turn follow-up queries with context
+- **Dashboard**: Real-time charts (latency, mode distribution, cost tracking)
+- **Query Cache**: SHA-256 keyed in-memory cache with configurable TTL
+- **Input Validation**: Pydantic field validators with length limits
+- **Rate Limiting**: Sliding window per-IP rate limiter on query endpoints
+- **Auth**: API key required on sensitive endpoints (`/ingest`, `/debug/env`)
 
 ## Local Setup
 
 ```bash
-# Clone and install
-cd legacylens
 pip install -r requirements.txt
 
 # Configure environment
 cp .env.example .env
 # Edit .env with your API keys
 
-# Download BLAS source
-mkdir -p data/blas_source
-curl -sL https://www.netlib.org/blas/blas.tgz | tar xz -C data/blas_source
-
 # Run
 uvicorn main:app --reload --port 8000
 
-# Ingest BLAS source (one-time)
+# Ingest source (one-time)
 curl -X POST http://localhost:8000/ingest \
   -H "X-API-Key: YOUR_ANTHROPIC_API_KEY"
 ```
 
-Visit `http://localhost:8000` for the query UI and `http://localhost:8000/dashboard` for observability.
-
-## Deployment (Render)
-
-1. Push to GitHub
-2. Create a new Web Service on Render pointing to your repo
-3. Set environment variables: `PINECONE_API_KEY`, `ANTHROPIC_API_KEY`
-4. Render will auto-deploy using `render.yaml`
-5. After deploy, trigger ingestion via `POST /ingest`
+Visit `http://localhost:8000` for the query UI and `/dashboard` for observability.
 
 ## API Endpoints
 
 | Method | Path | Description |
 |--------|------|-------------|
-| GET | `/` | Query UI |
-| GET | `/dashboard` | Observability dashboard |
+| GET | `/` | Query UI with onboarding + examples |
+| GET | `/dashboard` | Observability dashboard with charts |
+| GET | `/explorer` | Searchable routine browser |
+| GET | `/callgraph` | Interactive call graph visualization |
 | GET | `/health` | Health check |
-| POST | `/ingest` | Run ingestion pipeline |
-| POST | `/query` | RAG query (SSE streaming) |
-| POST | `/explain` | Code explanation |
-| POST | `/docgen` | Documentation generation |
-| POST | `/patterns` | Pattern analysis |
-| POST | `/translate` | Fortran→Python translation |
+| GET | `/docs` | Auto-generated API documentation |
+| POST | `/ingest` | Run ingestion pipeline (API key required) |
+| POST | `/query` | RAG query (SSE streaming, rate limited) |
+| POST | `/explain` | Code explanation (SSE, rate limited) |
+| POST | `/docgen` | Documentation generation (SSE, rate limited) |
+| POST | `/patterns` | Pattern analysis (SSE, rate limited) |
+| POST | `/translate` | Fortran→Python translation (SSE, rate limited) |
 | GET | `/api/stats` | Dashboard metrics JSON |
-| GET | `/api/recent-queries` | Last 20 queries |
-| GET | `/api/errors` | Last 10 errors |
+| GET | `/api/routines` | Routine index with search/filter |
+| GET | `/api/call-graph` | Call graph data with depth traversal |
+| GET | `/api/cache-stats` | Cache hit/miss statistics |
+| GET | `/debug/env` | Debug endpoint (API key required) |
 
 ## Project Structure
 
 ```
-legacylens/
-├── main.py           # FastAPI app with all routes
-├── ingest.py         # Ingestion pipeline
-├── retrieval.py      # RAG retrieval pipeline
+grimoire/
+├── main.py           # FastAPI app with all routes + rate limiting
+├── config.py         # Centralized configuration (env-overridable)
+├── ingest.py         # Multi-source ingestion pipeline
+├── retrieval.py      # RAG retrieval with score filtering
 ├── chunker.py        # Fortran syntax-aware chunking
 ├── embed.py          # Pinecone Inference API embeddings
 ├── llm.py            # Claude API wrapper with streaming
-├── db.py             # SQLite observability logging
-├── models.py         # Pydantic models
+├── db.py             # SQLite observability + routine index + call graph
+├── models.py         # Pydantic models with input validation
 ├── static/
-│   ├── index.html    # Query UI
-│   └── dashboard.html # Observability dashboard
+│   ├── index.html    # Query UI with onboarding + conversation
+│   ├── dashboard.html # Charts + metrics dashboard
+│   ├── explorer.html  # Routine browser
+│   └── callgraph.html # D3.js call graph
 ├── render.yaml       # Render deployment config
 ├── requirements.txt
 ├── AI_DEV_LOG.md     # Development log

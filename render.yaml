@@ -14,7 +14,7 @@ services:
       - key: DB_PATH
         value: /data/legacylens.db
       - key: SOURCE_DIRS
-        value: /data/blas_source,/data/lapack_source
+        value: /data/blas_source,/data/lapack_source,/data/scalapack_source
       - key: CLAUDE_MODEL
         value: claude-haiku-4-5-20251001
     disk:

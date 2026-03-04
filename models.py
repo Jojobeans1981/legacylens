@@ -58,7 +58,7 @@ class RetrievalChunk(BaseModel):
     start_line: int
     end_line: int
     chunk_type: str
-    routine_name: str
+    routine_name: Optional[str] = ""
     score: float
 
 
