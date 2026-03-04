@@ -11,10 +11,10 @@ SCORE_THRESHOLD = float(os.getenv("SCORE_THRESHOLD", "0.35"))
 DEFAULT_TOP_K = int(os.getenv("DEFAULT_TOP_K", "5"))
 
 # ─── LLM ─────────────────────────────────────────────────────────────────────
-CLAUDE_MODEL = os.getenv("CLAUDE_MODEL", "claude-haiku-4-5-20251001")
+CLAUDE_MODEL = os.getenv("CLAUDE_MODEL", "claude-sonnet-4-6-20250514")
 LLM_MAX_TOKENS = int(os.getenv("LLM_MAX_TOKENS", "1024"))
-INPUT_COST_PER_MTOK = float(os.getenv("INPUT_COST_PER_MTOK", "0.80"))
-OUTPUT_COST_PER_MTOK = float(os.getenv("OUTPUT_COST_PER_MTOK", "4.0"))
+INPUT_COST_PER_MTOK = float(os.getenv("INPUT_COST_PER_MTOK", "3.0"))
+OUTPUT_COST_PER_MTOK = float(os.getenv("OUTPUT_COST_PER_MTOK", "15.0"))
 
 # ─── Embedding ───────────────────────────────────────────────────────────────
 EMBED_MODEL = os.getenv("EMBED_MODEL", "multilingual-e5-large")
