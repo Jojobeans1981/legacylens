@@ -24,6 +24,7 @@ class QueryRequest(BaseModel):
     query: str
     routine: Optional[str] = None
     file: Optional[str] = None
+    conversation_history: Optional[list[dict]] = None
 
 
 class RetrievalChunk(BaseModel):

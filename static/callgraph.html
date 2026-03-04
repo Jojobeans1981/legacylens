@@ -1,0 +1,316 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>LegacyLens — Call Graph</title>
+    <script src="https://cdn.jsdelivr.net/npm/d3@7"></script>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        :root {
+            --bg: #0d1117; --surface: #161b22; --border: #30363d;
+            --text: #e6edf3; --text-dim: #8b949e; --accent: #58a6ff;
+            --accent-dim: #1f6feb; --green: #3fb950; --orange: #d29922;
+            --red: #f85149; --purple: #bc8cff;
+        }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif;
+            background: var(--bg); color: var(--text); overflow: hidden;
+        }
+        header {
+            display: flex; align-items: center; justify-content: space-between;
+            padding: 12px 24px; border-bottom: 1px solid var(--border);
+            background: var(--surface); z-index: 10; position: relative;
+        }
+        header h1 { font-size: 20px; font-weight: 600; }
+        header h1 span { color: var(--accent); }
+        .header-links a {
+            color: var(--text-dim); text-decoration: none; margin-left: 16px;
+            font-size: 14px;
+        }
+        .header-links a:hover { color: var(--accent); }
+
+        .toolbar {
+            position: absolute; top: 60px; left: 24px; z-index: 10;
+            display: flex; flex-direction: column; gap: 8px;
+        }
+        .search-wrap {
+            display: flex; gap: 8px;
+        }
+        .search-input {
+            background: var(--surface); border: 1px solid var(--border);
+            border-radius: 8px; padding: 8px 14px; color: var(--text);
+            font-size: 14px; width: 240px; outline: none;
+        }
+        .search-input:focus { border-color: var(--accent); }
+        .search-input::placeholder { color: var(--text-dim); }
+        .search-btn {
+            background: var(--accent-dim); color: #fff; border: none;
+            padding: 8px 16px; border-radius: 8px; cursor: pointer;
+            font-size: 13px; font-weight: 500;
+        }
+        .search-btn:hover { background: var(--accent); }
+
+        .legend {
+            background: var(--surface); border: 1px solid var(--border);
+            border-radius: 8px; padding: 10px 14px; font-size: 12px;
+            display: flex; gap: 16px;
+        }
+        .legend-item { display: flex; align-items: center; gap: 4px; }
+        .legend-dot {
+            width: 10px; height: 10px; border-radius: 50%;
+        }
+
+        .info-panel {
+            position: absolute; top: 60px; right: 24px; z-index: 10;
+            background: var(--surface); border: 1px solid var(--border);
+            border-radius: 12px; padding: 16px; width: 280px;
+            display: none; font-size: 13px;
+        }
+        .info-panel h3 {
+            font-size: 16px; margin-bottom: 8px; color: var(--accent);
+            font-family: monospace;
+        }
+        .info-panel .field {
+            margin: 4px 0; color: var(--text-dim);
+        }
+        .info-panel .field strong { color: var(--text); }
+        .info-panel .action-links { margin-top: 12px; display: flex; gap: 8px; }
+        .info-panel .action-links a {
+            color: var(--accent); text-decoration: none; font-size: 12px;
+            padding: 4px 8px; border: 1px solid var(--border); border-radius: 6px;
+        }
+        .info-panel .action-links a:hover { border-color: var(--accent); }
+
+        #graph { width: 100vw; height: calc(100vh - 49px); }
+
+        .node-label {
+            font-size: 10px; fill: var(--text-dim); text-anchor: middle;
+            pointer-events: none; font-family: monospace;
+        }
+        .link { stroke-opacity: 0.4; }
+
+        .empty-msg {
+            position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
+            text-align: center; color: var(--text-dim);
+        }
+        .empty-msg h2 { font-size: 20px; color: var(--text); margin-bottom: 8px; }
+    </style>
+</head>
+<body>
+    <header>
+        <h1>Legacy<span>Lens</span> Call Graph</h1>
+        <div class="header-links">
+            <a href="/">Query</a>
+            <a href="/explorer">Explorer</a>
+            <a href="/dashboard">Dashboard</a>
+            <a href="/docs">API Docs</a>
+        </div>
+    </header>
+
+    <div class="toolbar">
+        <div class="search-wrap">
+            <input type="text" class="search-input" id="searchInput" placeholder="Search routine (e.g. DGEMM)...">
+            <button class="search-btn" onclick="searchRoutine()">Search</button>
+        </div>
+        <div class="legend">
+            <div class="legend-item"><div class="legend-dot" style="background:#58a6ff"></div> BLAS</div>
+            <div class="legend-item"><div class="legend-dot" style="background:#3fb950"></div> LAPACK</div>
+            <div class="legend-item"><div class="legend-dot" style="background:#bc8cff"></div> ScaLAPACK</div>
+            <div class="legend-item"><div class="legend-dot" style="background:#8b949e"></div> External</div>
+        </div>
+    </div>
+
+    <div class="info-panel" id="infoPanel">
+        <h3 id="infoName"></h3>
+        <div class="field">Library: <strong id="infoLib"></strong></div>
+        <div class="field">File: <strong id="infoFile"></strong></div>
+        <div class="field" id="infoCallsOut"></div>
+        <div class="field" id="infoCalledBy"></div>
+        <div class="action-links">
+            <a id="infoQueryLink" href="#">Query</a>
+            <a id="infoExplainLink" href="#">Explain</a>
+        </div>
+    </div>
+
+    <div id="emptyMsg" class="empty-msg" style="display:none;">
+        <h2>No Call Graph Data</h2>
+        <p>Run ingestion to populate the call graph, then search for a routine.</p>
+    </div>
+
+    <svg id="graph"></svg>
+
+    <script>
+        const LIB_COLORS = {
+            'BLAS': '#58a6ff', 'LAPACK': '#3fb950', 'ScaLAPACK': '#bc8cff', 'Unknown': '#8b949e'
+        };
+
+        let simulation, svg, g, link, node, label;
+        let graphData = { nodes: [], edges: [] };
+
+        function initSVG() {
+            svg = d3.select('#graph');
+            const width = window.innerWidth;
+            const height = window.innerHeight - 49;
+            svg.attr('width', width).attr('height', height);
+
+            g = svg.append('g');
+
+            // Zoom
+            const zoom = d3.zoom()
+                .scaleExtent([0.1, 4])
+                .on('zoom', e => g.attr('transform', e.transform));
+            svg.call(zoom);
+
+            // Arrow marker
+            svg.append('defs').append('marker')
+                .attr('id', 'arrow')
+                .attr('viewBox', '0 -5 10 10')
+                .attr('refX', 20)
+                .attr('refY', 0)
+                .attr('markerWidth', 6)
+                .attr('markerHeight', 6)
+                .attr('orient', 'auto')
+                .append('path')
+                .attr('d', 'M0,-5L10,0L0,5')
+                .attr('fill', '#30363d');
+        }
+
+        async function loadGraph(routine) {
+            const url = routine
+                ? `/api/call-graph?routine=${encodeURIComponent(routine)}&depth=2`
+                : '/api/call-graph';
+            try {
+                const resp = await fetch(url);
+                if (!resp.ok) return;
+                graphData = await resp.json();
+                if (graphData.nodes.length === 0) {
+                    document.getElementById('emptyMsg').style.display = 'block';
+                    return;
+                }
+                document.getElementById('emptyMsg').style.display = 'none';
+                renderGraph();
+            } catch (e) {
+                document.getElementById('emptyMsg').style.display = 'block';
+            }
+        }
+
+        function renderGraph() {
+            g.selectAll('*').remove();
+
+            const width = window.innerWidth;
+            const height = window.innerHeight - 49;
+
+            const nodes = graphData.nodes.map(n => ({ ...n }));
+            const edges = graphData.edges.map(e => ({
+                source: e.source, target: e.target
+            }));
+
+            // Build node map for edge resolution
+            const nodeIds = new Set(nodes.map(n => n.id));
+
+            // Filter edges to only include nodes we have
+            const validEdges = edges.filter(e => nodeIds.has(e.source) && nodeIds.has(e.target));
+
+            simulation = d3.forceSimulation(nodes)
+                .force('link', d3.forceLink(validEdges).id(d => d.id).distance(80))
+                .force('charge', d3.forceManyBody().strength(-200))
+                .force('center', d3.forceCenter(width / 2, height / 2))
+                .force('collision', d3.forceCollide(25));
+
+            link = g.append('g')
+                .selectAll('line')
+                .data(validEdges)
+                .join('line')
+                .attr('class', 'link')
+                .attr('stroke', '#30363d')
+                .attr('stroke-width', 1.5)
+                .attr('marker-end', 'url(#arrow)');
+
+            node = g.append('g')
+                .selectAll('circle')
+                .data(nodes)
+                .join('circle')
+                .attr('r', d => {
+                    const conns = validEdges.filter(e =>
+                        (typeof e.source === 'object' ? e.source.id : e.source) === d.id ||
+                        (typeof e.target === 'object' ? e.target.id : e.target) === d.id
+                    ).length;
+                    return Math.max(5, Math.min(15, 4 + conns * 1.5));
+                })
+                .attr('fill', d => LIB_COLORS[d.library] || LIB_COLORS['Unknown'])
+                .attr('stroke', '#0d1117')
+                .attr('stroke-width', 1.5)
+                .style('cursor', 'pointer')
+                .on('click', (event, d) => showInfo(d, validEdges))
+                .call(d3.drag()
+                    .on('start', dragStart)
+                    .on('drag', dragging)
+                    .on('end', dragEnd));
+
+            label = g.append('g')
+                .selectAll('text')
+                .data(nodes)
+                .join('text')
+                .attr('class', 'node-label')
+                .attr('dy', -12)
+                .text(d => d.id);
+
+            simulation.on('tick', () => {
+                link.attr('x1', d => d.source.x).attr('y1', d => d.source.y)
+                    .attr('x2', d => d.target.x).attr('y2', d => d.target.y);
+                node.attr('cx', d => d.x).attr('cy', d => d.y);
+                label.attr('x', d => d.x).attr('y', d => d.y);
+            });
+        }
+
+        function showInfo(d, edges) {
+            const panel = document.getElementById('infoPanel');
+            panel.style.display = 'block';
+            document.getElementById('infoName').textContent = d.id;
+            document.getElementById('infoLib').textContent = d.library;
+            document.getElementById('infoFile').textContent = d.file_path || 'N/A';
+
+            const callsOut = edges.filter(e => (e.source.id || e.source) === d.id).map(e => e.target.id || e.target);
+            const calledBy = edges.filter(e => (e.target.id || e.target) === d.id).map(e => e.source.id || e.source);
+            document.getElementById('infoCallsOut').innerHTML = `Calls: <strong>${callsOut.join(', ') || 'none'}</strong>`;
+            document.getElementById('infoCalledBy').innerHTML = `Called by: <strong>${calledBy.join(', ') || 'none'}</strong>`;
+
+            document.getElementById('infoQueryLink').href = `/?query=${encodeURIComponent('What does ' + d.id + ' do?')}&mode=query`;
+            document.getElementById('infoExplainLink').href = `/?query=${encodeURIComponent('Explain ' + d.id)}&mode=explain`;
+        }
+
+        function dragStart(event, d) {
+            if (!event.active) simulation.alphaTarget(0.3).restart();
+            d.fx = d.x; d.fy = d.y;
+        }
+        function dragging(event, d) { d.fx = event.x; d.fy = event.y; }
+        function dragEnd(event, d) {
+            if (!event.active) simulation.alphaTarget(0);
+            d.fx = null; d.fy = null;
+        }
+
+        function searchRoutine() {
+            const val = document.getElementById('searchInput').value.trim().toUpperCase();
+            if (val) loadGraph(val);
+            else loadGraph();
+        }
+
+        document.getElementById('searchInput').addEventListener('keydown', e => {
+            if (e.key === 'Enter') searchRoutine();
+        });
+
+        // Check URL params
+        const params = new URLSearchParams(window.location.search);
+        const routineParam = params.get('routine');
+
+        initSVG();
+        if (routineParam) {
+            document.getElementById('searchInput').value = routineParam;
+            loadGraph(routineParam);
+        } else {
+            loadGraph();
+        }
+    </script>
+</body>
+</html>

@@ -7,6 +7,7 @@
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github-dark.min.css">
     <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/fortran.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/python.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -72,21 +73,43 @@
             display: flex; align-items: center; justify-content: space-between;
             margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--border);
         }
+        .query-actions { display: flex; gap: 8px; align-items: center; }
         .optional-inputs { display: flex; gap: 8px; }
         .optional-inputs input {
             background: var(--bg); border: 1px solid var(--border); color: var(--text);
-            padding: 6px 12px; border-radius: 6px; font-size: 13px; width: 160px;
+            padding: 6px 12px; border-radius: 6px; font-size: 13px; width: 140px;
         }
         .optional-inputs input::placeholder { color: var(--text-dim); }
         .submit-btn {
             background: var(--accent-dim); color: #fff; border: none;
             padding: 8px 20px; border-radius: 8px; cursor: pointer;
-            font-size: 14px; font-weight: 500; display: flex; align-items: center; gap: 6px;
-            transition: background 0.2s;
+            font-size: 14px; font-weight: 500; transition: background 0.2s;
         }
         .submit-btn:hover { background: var(--accent); }
         .submit-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+        .new-conv-btn {
+            background: transparent; border: 1px solid var(--border); color: var(--text-dim);
+            padding: 6px 12px; border-radius: 6px; cursor: pointer; font-size: 12px;
+            transition: all 0.2s; display: none;
+        }
+        .new-conv-btn:hover { color: var(--text); border-color: var(--accent); }
         .shortcut-hint { color: var(--text-dim); font-size: 12px; }
+
+        /* Conversation thread */
+        .conv-thread { margin-bottom: 16px; display: none; }
+        .conv-turn {
+            background: var(--surface); border: 1px solid var(--border);
+            border-radius: 8px; padding: 12px 16px; margin-bottom: 8px;
+            font-size: 13px;
+        }
+        .conv-turn .conv-role {
+            font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px;
+            color: var(--text-dim); margin-bottom: 4px;
+        }
+        .conv-turn.user .conv-role { color: var(--accent); }
+        .conv-turn .conv-text {
+            max-height: 80px; overflow: hidden; color: var(--text-dim);
+        }
 
         /* Results area */
         .results-grid { display: grid; grid-template-columns: 1fr 380px; gap: 20px; }
@@ -130,35 +153,51 @@
             background: var(--bg); border: 1px solid var(--border); border-radius: 8px;
             padding: 12px; margin: 12px 0; overflow-x: auto;
         }
-        .answer-content pre code {
-            background: transparent; padding: 0; font-size: 13px;
-        }
+        .answer-content pre code { background: transparent; padding: 0; font-size: 13px; }
         .answer-content blockquote {
             border-left: 3px solid var(--accent); padding-left: 12px;
             color: var(--text-dim); margin: 8px 0;
         }
         .answer-content strong { color: var(--text); }
-        .answer-content table {
-            width: 100%; border-collapse: collapse; margin: 12px 0;
-        }
+        .answer-content table { width: 100%; border-collapse: collapse; margin: 12px 0; }
         .answer-content th, .answer-content td {
             border: 1px solid var(--border); padding: 6px 10px; text-align: left;
         }
         .answer-content th { background: var(--bg); color: var(--text-dim); }
 
-        /* Streaming cursor */
+        /* Side-by-side translation */
+        .translation-grid {
+            display: grid; grid-template-columns: 1fr 1fr; gap: 16px;
+            margin-top: 16px;
+        }
+        @media (max-width: 900px) { .translation-grid { grid-template-columns: 1fr; } }
+        .translation-pane {
+            background: var(--bg); border: 1px solid var(--border);
+            border-radius: 8px; overflow: hidden;
+        }
+        .translation-pane-header {
+            padding: 6px 12px; font-size: 12px; font-weight: 600;
+            text-transform: uppercase; letter-spacing: 0.5px;
+            border-bottom: 1px solid var(--border);
+        }
+        .translation-pane-header.fortran { color: var(--accent); background: rgba(88,166,255,0.05); }
+        .translation-pane-header.python { color: var(--green); background: rgba(63,185,80,0.05); }
+        .translation-pane pre {
+            margin: 0; padding: 12px; font-size: 12px;
+            max-height: 400px; overflow: auto;
+        }
+
         .streaming-cursor {
             display: inline-block; width: 2px; height: 1.1em;
             background: var(--accent); margin-left: 2px;
             vertical-align: text-bottom;
-            animation: blink 0.8s step-end infinite;
+            animation: blink-cursor 0.8s step-end infinite;
         }
-        @keyframes blink { 50% { opacity: 0; } }
+        @keyframes blink-cursor { 50% { opacity: 0; } }
 
         .answer-meta {
             margin-top: 16px; padding-top: 12px; border-top: 1px solid var(--border);
-            display: flex; gap: 16px; font-size: 12px; color: var(--text-dim);
-            flex-wrap: wrap;
+            display: flex; gap: 16px; font-size: 12px; color: var(--text-dim); flex-wrap: wrap;
         }
         .copy-btn {
             background: var(--bg); border: 1px solid var(--border); color: var(--text-dim);
@@ -180,32 +219,22 @@
         .chunk-header {
             display: flex; align-items: center; justify-content: space-between;
             padding: 8px 12px; background: rgba(255,255,255,0.02);
-            border-bottom: 1px solid var(--border); cursor: pointer;
-            gap: 8px;
+            border-bottom: 1px solid var(--border); cursor: pointer; gap: 8px;
         }
         .chunk-header:hover { background: rgba(255,255,255,0.05); }
         .chunk-file { font-size: 13px; color: var(--accent); font-family: monospace; flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
         .chunk-badges { display: flex; gap: 4px; align-items: center; flex-shrink: 0; }
-        .chunk-score {
-            font-size: 11px; padding: 2px 8px; border-radius: 10px;
-            font-weight: 600;
-        }
+        .chunk-score { font-size: 11px; padding: 2px 8px; border-radius: 10px; font-weight: 600; }
         .score-high { background: rgba(63,185,80,0.15); color: var(--green); }
         .score-mid { background: rgba(210,153,34,0.15); color: var(--orange); }
         .score-low { background: rgba(248,81,73,0.15); color: var(--red); }
-        .lib-badge {
-            font-size: 10px; padding: 2px 6px; border-radius: 10px;
-            font-weight: 700; text-transform: uppercase; letter-spacing: 0.3px;
-        }
+        .lib-badge { font-size: 10px; padding: 2px 6px; border-radius: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.3px; }
         .lib-blas { background: rgba(88,166,255,0.15); color: var(--accent); }
         .lib-lapack { background: rgba(63,185,80,0.15); color: var(--green); }
         .lib-scalapack { background: rgba(188,140,255,0.15); color: var(--purple); }
-        .chunk-code {
-            max-height: 200px; overflow-y: auto; font-size: 12px;
-        }
+        .chunk-code { max-height: 200px; overflow-y: auto; font-size: 12px; }
         .chunk-code pre { margin: 0; padding: 8px 12px; }
 
-        /* Loading spinner */
         .loading { display: none; align-items: center; gap: 8px; color: var(--text-dim); padding: 12px 0; }
         .loading.active { display: flex; }
         .spinner {
@@ -215,27 +244,32 @@
         }
         @keyframes spin { to { transform: rotate(360deg); } }
 
-        /* History */
-        .history {
-            margin-top: 24px; padding-top: 16px;
-            border-top: 1px solid var(--border);
+        /* Example queries grid */
+        .examples-grid {
+            display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+            gap: 12px; margin-top: 20px;
         }
-        .history h3 {
-            font-size: 14px; color: var(--text-dim); margin-bottom: 8px;
-            text-transform: uppercase; letter-spacing: 0.5px;
+        .example-card {
+            background: var(--surface); border: 1px solid var(--border);
+            border-radius: 8px; padding: 14px; cursor: pointer;
+            transition: all 0.2s;
         }
-        .history-item {
-            padding: 6px 12px; cursor: pointer; border-radius: 6px;
-            font-size: 13px; color: var(--text-dim); transition: all 0.2s;
+        .example-card:hover { border-color: var(--accent); background: rgba(88,166,255,0.03); }
+        .example-query { font-size: 14px; font-weight: 500; margin-bottom: 6px; }
+        .example-desc { font-size: 12px; color: var(--text-dim); }
+        .example-badge {
+            display: inline-block; font-size: 10px; padding: 2px 6px;
+            border-radius: 10px; font-weight: 600; margin-bottom: 6px;
         }
-        .history-item:hover { background: var(--surface); color: var(--text); }
 
-        /* Empty state */
-        .empty-state {
-            text-align: center; padding: 60px 20px; color: var(--text-dim);
-        }
+        .empty-state { text-align: center; padding: 40px 20px; color: var(--text-dim); }
         .empty-state h2 { font-size: 20px; margin-bottom: 8px; color: var(--text); }
-        .empty-state p { font-size: 14px; max-width: 500px; margin: 0 auto; }
+        .empty-state p { font-size: 14px; max-width: 500px; margin: 0 auto 16px; }
+
+        .history { margin-top: 24px; padding-top: 16px; border-top: 1px solid var(--border); }
+        .history h3 { font-size: 14px; color: var(--text-dim); margin-bottom: 8px; text-transform: uppercase; letter-spacing: 0.5px; }
+        .history-item { padding: 6px 12px; cursor: pointer; border-radius: 6px; font-size: 13px; color: var(--text-dim); transition: all 0.2s; }
+        .history-item:hover { background: var(--surface); color: var(--text); }
     </style>
 </head>
 <body>
@@ -243,8 +277,10 @@
         <header>
             <h1>Legacy<span>Lens</span></h1>
             <div class="header-links">
+                <a href="/explorer">Explorer</a>
+                <a href="/callgraph">Call Graph</a>
                 <a href="/dashboard">Dashboard</a>
-                <a href="/health">Health</a>
+                <a href="/docs">API Docs</a>
             </div>
         </header>
 
@@ -267,17 +303,18 @@
             <textarea id="queryInput" placeholder="Ask about BLAS, LAPACK, or ScaLAPACK routines..." rows="2"></textarea>
             <div class="query-controls">
                 <div class="optional-inputs">
-                    <input type="text" id="routineInput" placeholder="Routine name (optional)">
-                    <input type="text" id="fileInput" placeholder="File name (optional)">
+                    <input type="text" id="routineInput" placeholder="Routine (optional)">
+                    <input type="text" id="fileInput" placeholder="File (optional)">
                 </div>
-                <div style="display:flex;align-items:center;gap:12px;">
+                <div class="query-actions">
+                    <button class="new-conv-btn" id="newConvBtn" onclick="newConversation()">New Conversation</button>
                     <span class="shortcut-hint">Ctrl+Enter</span>
-                    <button class="submit-btn" id="submitBtn" onclick="submitQuery()">
-                        Submit
-                    </button>
+                    <button class="submit-btn" id="submitBtn" onclick="submitQuery()">Submit</button>
                 </div>
             </div>
         </div>
+
+        <div class="conv-thread" id="convThread"></div>
 
         <div class="loading" id="loading">
             <div class="spinner"></div>
@@ -292,6 +329,7 @@
                         <button class="copy-btn" onclick="copyAnswer()">Copy</button>
                     </div>
                     <div class="answer-content" id="answerContent"></div>
+                    <div id="translationView"></div>
                     <div class="answer-meta" id="answerMeta"></div>
                 </div>
                 <div class="chunks-panel">
@@ -303,8 +341,49 @@
 
         <div class="empty-state" id="emptyState">
             <h2>Explore BLAS, LAPACK & ScaLAPACK</h2>
-            <p>Ask questions about the linear algebra codebase.
-               Try "What does DGEMM do?" or "Translate DTRSM to NumPy".</p>
+            <p>Ask questions about the linear algebra codebase. Click an example to get started.</p>
+            <div class="examples-grid">
+                <div class="example-card" onclick="runExample('What does DGEMM do?','query')">
+                    <span class="example-badge badge-query" style="background:rgba(88,166,255,0.15);color:var(--accent);">Query</span>
+                    <div class="example-query">What does DGEMM do?</div>
+                    <div class="example-desc">Double-precision general matrix multiply from BLAS</div>
+                </div>
+                <div class="example-card" onclick="runExample('Explain the DSYEV eigenvalue solver','explain')">
+                    <span class="example-badge" style="background:rgba(63,185,80,0.15);color:var(--green);">Explain</span>
+                    <div class="example-query">Explain DSYEV eigenvalue solver</div>
+                    <div class="example-desc">Symmetric eigenvalue decomposition from LAPACK</div>
+                </div>
+                <div class="example-card" onclick="runExample('Generate docs for SGEMM','docgen')">
+                    <span class="example-badge" style="background:rgba(188,140,255,0.15);color:var(--purple);">Docs</span>
+                    <div class="example-query">Generate docs for SGEMM</div>
+                    <div class="example-desc">Auto-generate BLAS-style documentation header</div>
+                </div>
+                <div class="example-card" onclick="runExample('Find error handling patterns','patterns')">
+                    <span class="example-badge" style="background:rgba(210,153,34,0.15);color:var(--orange);">Patterns</span>
+                    <div class="example-query">Error handling patterns</div>
+                    <div class="example-desc">Discover XERBLA usage and validation conventions</div>
+                </div>
+                <div class="example-card" onclick="runExample('Translate DTRSM to Python/NumPy','translate')">
+                    <span class="example-badge" style="background:rgba(248,81,73,0.15);color:var(--red);">Translate</span>
+                    <div class="example-query">Translate DTRSM to NumPy</div>
+                    <div class="example-desc">Triangular solve with side-by-side Python mapping</div>
+                </div>
+                <div class="example-card" onclick="runExample('What routines modify matrix arguments in-place?','query')">
+                    <span class="example-badge" style="background:rgba(88,166,255,0.15);color:var(--accent);">Query</span>
+                    <div class="example-query">In-place matrix modifications</div>
+                    <div class="example-desc">Find routines that overwrite input arguments</div>
+                </div>
+                <div class="example-card" onclick="runExample('Show ScaLAPACK parallel matrix operations','query')">
+                    <span class="example-badge" style="background:rgba(188,140,255,0.15);color:var(--purple);">Query</span>
+                    <div class="example-query">ScaLAPACK parallel operations</div>
+                    <div class="example-desc">Distributed matrix routines for parallel computing</div>
+                </div>
+                <div class="example-card" onclick="runExample('Dependencies of DGEMV','query')">
+                    <span class="example-badge" style="background:rgba(88,166,255,0.15);color:var(--accent);">Query</span>
+                    <div class="example-query">Dependencies of DGEMV</div>
+                    <div class="example-desc">Matrix-vector multiply call chain analysis</div>
+                </div>
+            </div>
         </div>
 
         <div class="history" id="historySection" style="display:none;">
@@ -317,29 +396,71 @@
         let currentMode = 'query';
         let isStreaming = false;
         let rawAnswer = '';
+        let lastChunks = [];
+        let conversationHistory = [];
         const modeEndpoints = {
             query: '/query', explain: '/explain', docgen: '/docgen',
             patterns: '/patterns', translate: '/translate'
         };
 
+        // URL params support: ?query=...&mode=...
+        const urlParams = new URLSearchParams(window.location.search);
+        if (urlParams.get('query')) {
+            document.getElementById('queryInput').value = urlParams.get('query');
+            if (urlParams.get('mode')) {
+                setMode(urlParams.get('mode'));
+            }
+        }
+
+        function setMode(mode) {
+            currentMode = mode;
+            document.querySelectorAll('.mode-btn').forEach(b => {
+                b.classList.toggle('active', b.dataset.mode === mode);
+            });
+        }
+
         // Mode selector
         document.querySelectorAll('.mode-btn').forEach(btn => {
-            btn.addEventListener('click', () => {
-                document.querySelectorAll('.mode-btn').forEach(b => b.classList.remove('active'));
-                btn.classList.add('active');
-                currentMode = btn.dataset.mode;
-            });
+            btn.addEventListener('click', () => setMode(btn.dataset.mode));
         });
 
         // Ctrl+Enter shortcut
         document.getElementById('queryInput').addEventListener('keydown', e => {
-            if (e.ctrlKey && e.key === 'Enter') {
-                e.preventDefault();
-                submitQuery();
-            }
+            if (e.ctrlKey && e.key === 'Enter') { e.preventDefault(); submitQuery(); }
         });
 
-        // Fetch stats bar on load
+        function runExample(query, mode) {
+            document.getElementById('queryInput').value = query;
+            setMode(mode);
+            submitQuery();
+        }
+
+        function newConversation() {
+            conversationHistory = [];
+            document.getElementById('convThread').style.display = 'none';
+            document.getElementById('convThread').innerHTML = '';
+            document.getElementById('newConvBtn').style.display = 'none';
+        }
+
+        function renderConvThread() {
+            const thread = document.getElementById('convThread');
+            if (conversationHistory.length === 0) {
+                thread.style.display = 'none';
+                document.getElementById('newConvBtn').style.display = 'none';
+                return;
+            }
+            thread.style.display = 'block';
+            document.getElementById('newConvBtn').style.display = 'inline-block';
+            thread.innerHTML = conversationHistory.map(turn => {
+                const isUser = turn.role === 'user';
+                const preview = turn.content.length > 150 ? turn.content.slice(0, 150) + '...' : turn.content;
+                return `<div class="conv-turn ${isUser ? 'user' : ''}">
+                    <div class="conv-role">${isUser ? 'You' : 'LegacyLens'}</div>
+                    <div class="conv-text">${escapeHtml(preview)}</div>
+                </div>`;
+            }).join('');
+        }
+
         async function fetchStatsBar() {
             try {
                 const [statsResp, cacheResp] = await Promise.all([
@@ -355,16 +476,13 @@
                     const cache = await cacheResp.json();
                     document.getElementById('statCache').textContent = `${cache.size}/${cache.max_size}`;
                 }
-            } catch (e) { /* stats bar is non-critical */ }
+            } catch (e) {}
         }
         fetchStatsBar();
 
         function renderMarkdown(text) {
-            try {
-                return marked.parse(text, { breaks: true });
-            } catch (e) {
-                return text;
-            }
+            try { return marked.parse(text, { breaks: true }); }
+            catch (e) { return text; }
         }
 
         async function submitQuery() {
@@ -374,13 +492,13 @@
             const routine = document.getElementById('routineInput').value.trim() || null;
             const file = document.getElementById('fileInput').value.trim() || null;
 
-            // UI state
             document.getElementById('submitBtn').disabled = true;
             document.getElementById('loading').classList.add('active');
             document.getElementById('loadingText').textContent = 'Searching codebase...';
             document.getElementById('emptyState').style.display = 'none';
             document.getElementById('resultsArea').style.display = 'none';
             document.getElementById('cacheBadge').style.display = 'none';
+            document.getElementById('translationView').innerHTML = '';
 
             const answerEl = document.getElementById('answerContent');
             const metaEl = document.getElementById('answerMeta');
@@ -389,16 +507,22 @@
             metaEl.innerHTML = '';
             chunksEl.innerHTML = '';
             rawAnswer = '';
+            lastChunks = [];
             isStreaming = true;
 
             addToHistory(query);
+
+            const body = { query, routine, file };
+            if (conversationHistory.length > 0) {
+                body.conversation_history = conversationHistory;
+            }
 
             try {
                 const endpoint = modeEndpoints[currentMode];
                 const response = await fetch(endpoint, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ query, routine, file })
+                    body: JSON.stringify(body)
                 });
 
                 if (!response.ok) {
@@ -428,12 +552,12 @@
                             document.getElementById('loading').classList.remove('active');
                             document.getElementById('loadingText').textContent = 'Generating answer...';
                             document.getElementById('loading').classList.add('active');
+                            lastChunks = data.chunks || [];
                             renderChunks(data.chunks);
                         } else if (data.type === 'text') {
                             document.getElementById('loading').classList.remove('active');
                             rawAnswer += data.content;
                             answerEl.innerHTML = renderMarkdown(rawAnswer) + '<span class="streaming-cursor"></span>';
-                            // Highlight any code blocks in the rendered markdown
                             answerEl.querySelectorAll('pre code').forEach(block => {
                                 if (!block.dataset.highlighted) {
                                     hljs.highlightElement(block);
@@ -442,7 +566,6 @@
                             });
                         } else if (data.type === 'done') {
                             isStreaming = false;
-                            // Final render without cursor
                             answerEl.innerHTML = renderMarkdown(rawAnswer);
                             answerEl.querySelectorAll('pre code').forEach(block => hljs.highlightElement(block));
 
@@ -456,6 +579,17 @@
                                 <span>Cost: $${data.cost_usd.toFixed(4)}</span>
                                 ${data.cache_hit ? '<span style="color:var(--green)">Cache hit</span>' : ''}
                             `;
+
+                            // Side-by-side for translate mode
+                            if (currentMode === 'translate' && lastChunks.length > 0) {
+                                renderTranslationView();
+                            }
+
+                            // Update conversation history
+                            conversationHistory.push({ role: 'user', content: query });
+                            conversationHistory.push({ role: 'assistant', content: rawAnswer });
+                            renderConvThread();
+
                             fetchStatsBar();
                         } else if (data.type === 'error') {
                             isStreaming = false;
@@ -474,6 +608,34 @@
             }
         }
 
+        function renderTranslationView() {
+            const container = document.getElementById('translationView');
+            // Get Fortran from top chunk
+            const fortranCode = lastChunks[0]?.content || '';
+            // Extract Python code blocks from answer
+            const codeBlockRegex = /```(?:python|py)?\n([\s\S]*?)```/g;
+            let pythonCode = '';
+            let match;
+            while ((match = codeBlockRegex.exec(rawAnswer)) !== null) {
+                pythonCode += (pythonCode ? '\n\n' : '') + match[1].trim();
+            }
+            if (!pythonCode) return; // No code blocks found, skip
+
+            container.innerHTML = `
+                <div class="translation-grid">
+                    <div class="translation-pane">
+                        <div class="translation-pane-header fortran">Fortran Original</div>
+                        <pre><code class="language-fortran">${escapeHtml(fortranCode)}</code></pre>
+                    </div>
+                    <div class="translation-pane">
+                        <div class="translation-pane-header python">Python Translation</div>
+                        <pre><code class="language-python">${escapeHtml(pythonCode)}</code></pre>
+                    </div>
+                </div>
+            `;
+            container.querySelectorAll('pre code').forEach(block => hljs.highlightElement(block));
+        }
+
         function detectLibrary(filePath) {
             const lower = (filePath || '').toLowerCase();
             if (lower.includes('scalapack') || lower.includes('pblas') || lower.includes('blacs')) return 'scalapack';
@@ -489,12 +651,10 @@
                 return;
             }
             chunks.forEach((chunk, i) => {
-                const scoreClass = chunk.score >= 0.7 ? 'score-high' :
-                                   chunk.score >= 0.5 ? 'score-mid' : 'score-low';
+                const scoreClass = chunk.score >= 0.7 ? 'score-high' : chunk.score >= 0.5 ? 'score-mid' : 'score-low';
                 const lib = detectLibrary(chunk.file_path);
                 const libClass = 'lib-' + lib;
                 const libLabel = lib === 'scalapack' ? 'ScaLAPACK' : lib.toUpperCase();
-
                 const card = document.createElement('div');
                 card.className = 'chunk-card';
                 card.innerHTML = `
@@ -528,7 +688,6 @@
             });
         }
 
-        // History management
         function addToHistory(query) {
             let history = JSON.parse(sessionStorage.getItem('queryHistory') || '[]');
             history = [query, ...history.filter(q => q !== query)].slice(0, 5);

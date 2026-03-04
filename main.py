@@ -140,6 +140,18 @@ async def serve_dashboard():
         return HTMLResponse(content=f.read())
 
 
+@app.get("/explorer", response_class=HTMLResponse)
+async def serve_explorer():
+    with open(os.path.join(STATIC_DIR, "explorer.html"), "r") as f:
+        return HTMLResponse(content=f.read())
+
+
+@app.get("/callgraph", response_class=HTMLResponse)
+async def serve_callgraph():
+    with open(os.path.join(STATIC_DIR, "callgraph.html"), "r") as f:
+        return HTMLResponse(content=f.read())
+
+
 # ─── Health Check ───────────────────────────────────────────────────────────
 
 @app.get("/health")
@@ -180,6 +192,26 @@ async def cache_stats():
         "max_size": CACHE_MAX_SIZE,
         "ttl_seconds": CACHE_TTL,
     }
+
+
+@app.get("/api/routines")
+async def api_routines(library: str = None, search: str = None):
+    from db import get_routines
+    try:
+        routines = get_routines(library=library, search=search)
+        return JSONResponse(content=routines)
+    except Exception as e:
+        return JSONResponse(content={"error": str(e)}, status_code=500)
+
+
+@app.get("/api/call-graph")
+async def api_call_graph(routine: str = None, depth: int = 2):
+    from db import get_call_graph
+    try:
+        graph = get_call_graph(routine=routine, depth=min(depth, 4))
+        return JSONResponse(content=graph)
+    except Exception as e:
+        return JSONResponse(content={"error": str(e)}, status_code=500)
 
 
 # ─── Ingestion ──────────────────────────────────────────────────────────────
@@ -227,9 +259,10 @@ async def _handle_query(query_request, mode: str):
     from db import log_query, log_error
 
     start_time = time.time()
+    has_history = bool(getattr(query_request, "conversation_history", None))
 
-    # ── Cache hit path ──
-    cached = _cache_get(mode, query_request.query)
+    # ── Cache hit path (skip for follow-up queries) ──
+    cached = None if has_history else _cache_get(mode, query_request.query)
     if cached:
         async def cached_stream():
             yield f"data: {json.dumps({'type': 'retrieval', 'found': bool(cached['chunks']), 'chunks': cached['chunks']})}\n\n"
@@ -280,6 +313,7 @@ async def _handle_query(query_request, mode: str):
                 query=query_request.query,
                 context=retrieval_result.context,
                 mode=mode,
+                conversation_history=getattr(query_request, "conversation_history", None),
             ):
                 if chunk.startswith("\x00"):
                     meta = json.loads(chunk[1:])

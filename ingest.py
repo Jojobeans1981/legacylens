@@ -1,13 +1,31 @@
 """Ingestion pipeline: discover, chunk, embed, and upsert BLAS source to Pinecone."""
 
 import os
+import re
 import time
 from pathlib import Path
 
 from chunker import chunk_fortran_file
 from models import Chunk, IngestResult
-from db import log_ingestion
+from db import log_ingestion, log_routines, log_call_graph
 from embed import embed_texts
+
+
+def _parse_call_graph(chunks: list[Chunk]) -> list[tuple]:
+    """Extract CALL statements from Fortran chunks to build a call graph."""
+    call_pattern = re.compile(r'^\s*CALL\s+(\w+)', re.IGNORECASE | re.MULTILINE)
+    edges = []
+    for chunk in chunks:
+        if not chunk.routine_name:
+            continue
+        caller = chunk.routine_name.upper()
+        for match in call_pattern.finditer(chunk.content):
+            callee = match.group(1).upper()
+            if callee != caller:  # skip self-calls
+                # Estimate line number
+                line_offset = chunk.content[:match.start()].count('\n')
+                edges.append((caller, callee, chunk.file_path, chunk.start_line + line_offset))
+    return edges
 
 
 def discover_fortran_files(source_dir: str) -> list[Path]:
@@ -134,6 +152,13 @@ def run_ingestion(source_dirs: list[str], index=None) -> IngestResult:
         index.upsert(vectors=vectors)
         print(f"  Upserted batch {batch_start // batch_size + 1}/"
               f"{(len(all_chunks) + batch_size - 1) // batch_size}")
+
+    # Populate routine index and call graph
+    print("Building routine index and call graph...")
+    log_routines(all_chunks)
+    edges = _parse_call_graph(all_chunks)
+    log_call_graph(edges)
+    print(f"  {len([c for c in all_chunks if c.routine_name])} routines indexed, {len(edges)} call edges found")
 
     duration = time.time() - start_time
     print(f"Ingestion complete in {duration:.1f}s")

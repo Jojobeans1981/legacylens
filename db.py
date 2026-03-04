@@ -54,6 +54,24 @@ def _create_tables(conn: sqlite3.Connection):
             error_type TEXT,
             error_message TEXT
         );
+
+        CREATE TABLE IF NOT EXISTS routine_index (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            routine_name TEXT,
+            file_path TEXT,
+            chunk_type TEXT,
+            start_line INTEGER,
+            end_line INTEGER,
+            library TEXT
+        );
+
+        CREATE TABLE IF NOT EXISTS call_graph (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            caller TEXT,
+            callee TEXT,
+            file_path TEXT,
+            line_number INTEGER
+        );
     """)
     conn.commit()
 
@@ -203,6 +221,146 @@ def get_stats() -> dict:
             "total_input_tokens": total_input_tokens,
             "total_output_tokens": total_output_tokens,
         }
+    finally:
+        conn.close()
+
+
+def _detect_library(file_path: str) -> str:
+    """Detect library from file path."""
+    lower = (file_path or "").lower()
+    if "scalapack" in lower or "pblas" in lower or "blacs" in lower:
+        return "ScaLAPACK"
+    if "lapack" in lower:
+        return "LAPACK"
+    return "BLAS"
+
+
+def log_routines(chunks: list):
+    """Populate routine_index from ingested chunks."""
+    conn = get_connection()
+    try:
+        conn.execute("DELETE FROM routine_index")
+        for c in chunks:
+            name = getattr(c, "routine_name", None) or c.get("routine_name", "") if isinstance(c, dict) else c.routine_name
+            fpath = c.get("file_path", "") if isinstance(c, dict) else c.file_path
+            ctype = c.get("chunk_type", "") if isinstance(c, dict) else c.chunk_type
+            sline = c.get("start_line", 0) if isinstance(c, dict) else c.start_line
+            eline = c.get("end_line", 0) if isinstance(c, dict) else c.end_line
+            if not name:
+                continue
+            conn.execute(
+                "INSERT INTO routine_index (routine_name, file_path, chunk_type, start_line, end_line, library) VALUES (?, ?, ?, ?, ?, ?)",
+                (name, fpath, ctype, sline, eline, _detect_library(fpath))
+            )
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def get_routines(library: str = None, search: str = None) -> list[dict]:
+    """Get routines from the index, optionally filtered."""
+    conn = get_connection()
+    try:
+        query = "SELECT routine_name, file_path, chunk_type, start_line, end_line, library FROM routine_index"
+        params = []
+        conditions = []
+        if library:
+            conditions.append("library = ?")
+            params.append(library)
+        if search:
+            conditions.append("routine_name LIKE ?")
+            params.append(f"%{search}%")
+        if conditions:
+            query += " WHERE " + " AND ".join(conditions)
+        query += " ORDER BY library, routine_name"
+        rows = conn.execute(query, params).fetchall()
+        return [dict(r) for r in rows]
+    finally:
+        conn.close()
+
+
+def log_call_graph(edges: list[tuple]):
+    """Populate call_graph from parsed CALL statements."""
+    conn = get_connection()
+    try:
+        conn.execute("DELETE FROM call_graph")
+        for caller, callee, file_path, line_number in edges:
+            conn.execute(
+                "INSERT INTO call_graph (caller, callee, file_path, line_number) VALUES (?, ?, ?, ?)",
+                (caller, callee, file_path, line_number)
+            )
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def get_call_graph(routine: str = None, depth: int = 2) -> dict:
+    """Get call graph nodes and edges, optionally centered on a routine."""
+    conn = get_connection()
+    try:
+        if routine:
+            routine = routine.upper()
+            nodes = set()
+            edges = []
+            frontier = {routine}
+            visited = set()
+            for _ in range(depth):
+                if not frontier:
+                    break
+                placeholders = ",".join("?" * len(frontier))
+                # Outgoing calls
+                rows = conn.execute(
+                    f"SELECT caller, callee, file_path, line_number FROM call_graph WHERE UPPER(caller) IN ({placeholders})",
+                    list(frontier)
+                ).fetchall()
+                for r in rows:
+                    edges.append({"source": r[0], "target": r[1], "file_path": r[2], "line": r[3]})
+                    nodes.add(r[0])
+                    nodes.add(r[1])
+                # Incoming calls
+                rows = conn.execute(
+                    f"SELECT caller, callee, file_path, line_number FROM call_graph WHERE UPPER(callee) IN ({placeholders})",
+                    list(frontier)
+                ).fetchall()
+                for r in rows:
+                    edges.append({"source": r[0], "target": r[1], "file_path": r[2], "line": r[3]})
+                    nodes.add(r[0])
+                    nodes.add(r[1])
+                visited.update(frontier)
+                frontier = nodes - visited
+        else:
+            rows = conn.execute(
+                "SELECT DISTINCT caller, callee, file_path, line_number FROM call_graph LIMIT 500"
+            ).fetchall()
+            edges = [{"source": r[0], "target": r[1], "file_path": r[2], "line": r[3]} for r in rows]
+            nodes = set()
+            for e in edges:
+                nodes.add(e["source"])
+                nodes.add(e["target"])
+
+        # Deduplicate edges
+        seen = set()
+        unique_edges = []
+        for e in edges:
+            key = (e["source"], e["target"])
+            if key not in seen:
+                seen.add(key)
+                unique_edges.append(e)
+
+        # Get library info for nodes
+        node_list = []
+        for n in nodes:
+            row = conn.execute(
+                "SELECT file_path, library FROM routine_index WHERE UPPER(routine_name) = ? LIMIT 1",
+                (n.upper(),)
+            ).fetchone()
+            node_list.append({
+                "id": n,
+                "library": row["library"] if row else "Unknown",
+                "file_path": row["file_path"] if row else "",
+            })
+
+        return {"nodes": node_list, "edges": unique_edges}
     finally:
         conn.close()
 

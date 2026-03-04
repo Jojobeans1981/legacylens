@@ -59,7 +59,8 @@ OUTPUT_COST_PER_TOKEN = 4.0 / 1_000_000
 
 
 async def generate_answer(query: str, context: str,
-                          mode: str = "query") -> AsyncGenerator[str, None]:
+                          mode: str = "query",
+                          conversation_history: list[dict] = None) -> AsyncGenerator[str, None]:
     """Stream an answer from Claude Sonnet using the RAG context.
 
     Yields chunks of text as they arrive, then yields a final JSON metadata line
@@ -78,6 +79,13 @@ async def generate_answer(query: str, context: str,
             "Please let the user know and suggest how they might refine their question."
         )
 
+    # Build messages list with conversation history
+    messages = []
+    if conversation_history:
+        for turn in conversation_history[-6:]:  # Keep last 3 exchanges
+            messages.append({"role": turn["role"], "content": turn["content"]})
+    messages.append({"role": "user", "content": user_message})
+
     input_tokens = 0
     output_tokens = 0
 
@@ -85,7 +93,7 @@ async def generate_answer(query: str, context: str,
         model=os.getenv("CLAUDE_MODEL", "claude-haiku-4-5-20251001"),
         max_tokens=2048,
         system=system_prompt,
-        messages=[{"role": "user", "content": user_message}],
+        messages=messages,
     ) as stream:
         async for text in stream.text_stream:
             yield text
