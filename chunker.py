@@ -12,8 +12,8 @@ ROUTINE_START = re.compile(
     re.IGNORECASE | re.MULTILINE
 )
 ROUTINE_END = re.compile(
-    r'^\s*END\s*(SUBROUTINE|FUNCTION|PROGRAM)?\s*(\w*)\s*$',
-    re.IGNORECASE | re.MULTILINE
+    r'^\s*END\s+(SUBROUTINE|FUNCTION|PROGRAM)\s*(\w*)\s*$|^\s*END\s*$',
+    re.IGNORECASE
 )
 
 # Comment line patterns (Fortran 77 uses C/c/* in column 1, free-form uses !)
