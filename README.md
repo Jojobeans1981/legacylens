@@ -1,6 +1,6 @@
 # GRIMOIRE
 
-**G**enerative **R**etrieval **I**ntelligence for **M**apping **O**ld **I**mperative **R**outine **E**ngineering
+**G**enerative **R**etrieval **I**ntelligence for **M**odernizing **O**utdated **I**nfrastructure **R**outines and **E**nvironments
 
 A production-ready RAG system that makes BLAS, LAPACK, and ScaLAPACK Fortran codebases queryable via natural language.
 
