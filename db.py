@@ -376,6 +376,7 @@ def log_call_graph(edges: list[tuple]):
 
 def get_call_graph(routine: str = None, depth: int = 2) -> dict:
     """Get call graph nodes and edges, optionally centered on a routine."""
+    MAX_NODES = 150
     conn = get_connection()
     try:
         if routine:
@@ -385,7 +386,7 @@ def get_call_graph(routine: str = None, depth: int = 2) -> dict:
             frontier = {routine}
             visited = set()
             for _ in range(depth):
-                if not frontier:
+                if not frontier or len(nodes) >= MAX_NODES:
                     break
                 placeholders = ",".join("?" * len(frontier))
                 # Outgoing calls
@@ -408,6 +409,9 @@ def get_call_graph(routine: str = None, depth: int = 2) -> dict:
                     nodes.add(r[1])
                 visited.update(frontier)
                 frontier = nodes - visited
+                # Cap frontier to prevent explosion
+                if len(frontier) > 50:
+                    frontier = set(list(frontier)[:50])
         else:
             rows = conn.execute(
                 "SELECT DISTINCT caller, callee, file_path, line_number FROM call_graph LIMIT 500"
