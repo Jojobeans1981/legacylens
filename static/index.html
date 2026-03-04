@@ -312,6 +312,21 @@
             margin-top: 16px; padding-top: 12px; border-top: 1px solid var(--border);
             display: flex; gap: 16px; font-size: 12px; color: var(--text-dim); flex-wrap: wrap;
         }
+        .feedback-bar {
+            display: none; align-items: center; gap: 12px; margin-top: 12px;
+            padding-top: 12px; border-top: 1px solid var(--border);
+        }
+        .feedback-bar.active { display: flex; }
+        .feedback-btn {
+            background: var(--surface); border: 1px solid var(--border); border-radius: 8px;
+            padding: 6px 16px; cursor: pointer; font-size: 14px; color: var(--text-dim);
+            transition: all 0.2s; display: flex; align-items: center; gap: 6px;
+        }
+        .feedback-btn:hover { border-color: var(--accent); color: var(--text); }
+        .feedback-btn.selected-up { border-color: var(--green); color: var(--green); background: rgba(63,185,80,0.1); }
+        .feedback-btn.selected-down { border-color: var(--red); color: var(--red); background: rgba(248,81,73,0.1); }
+        .feedback-label { font-size: 12px; color: var(--text-dim); }
+        .feedback-thanks { font-size: 12px; color: var(--green); display: none; }
         .copy-btn {
             background: var(--bg); border: 1px solid var(--border); color: var(--text-dim);
             padding: 4px 10px; border-radius: 4px; cursor: pointer; font-size: 12px;
@@ -485,6 +500,12 @@
                     <div class="answer-content" id="answerContent"></div>
                     <div id="translationView"></div>
                     <div class="answer-meta" id="answerMeta"></div>
+                    <div class="feedback-bar" id="feedbackBar">
+                        <span class="feedback-label">Was this helpful?</span>
+                        <button class="feedback-btn" id="thumbsUp">&#128077; Yes</button>
+                        <button class="feedback-btn" id="thumbsDown">&#128078; No</button>
+                        <span class="feedback-thanks" id="feedbackThanks">Thanks for your feedback!</span>
+                    </div>
                 </div>
                 <div class="chunks-panel">
                     <h3>Retrieved Chunks</h3>
@@ -711,6 +732,15 @@
             const routine = document.getElementById('routineInput').value.trim() || null;
             const file = document.getElementById('fileInput').value.trim() || null;
 
+            lastQueryText = query;
+            feedbackSent = false;
+            document.getElementById('feedbackBar').classList.remove('active');
+            document.getElementById('thumbsUp').classList.remove('selected-up');
+            document.getElementById('thumbsDown').classList.remove('selected-down');
+            document.getElementById('thumbsUp').disabled = false;
+            document.getElementById('thumbsDown').disabled = false;
+            document.getElementById('feedbackThanks').style.display = 'none';
+
             document.getElementById('submitBtn').disabled = true;
             document.getElementById('loading').classList.add('active');
             document.getElementById('loadingText').textContent = 'Searching codebase...';
@@ -798,6 +828,8 @@
                                 <span>Cost: $${data.cost_usd.toFixed(4)}</span>
                                 ${data.cache_hit ? '<span style="color:var(--green)">Cache hit</span>' : ''}
                             `;
+
+                            document.getElementById('feedbackBar').classList.add('active');
 
                             // Side-by-side for translate mode
                             if (currentMode === 'translate' && lastChunks.length > 0) {
@@ -909,6 +941,26 @@
                 btn.textContent = 'Copied!';
                 setTimeout(() => btn.textContent = 'Copy', 1500);
             });
+        }
+
+        let lastQueryText = '';
+        let feedbackSent = false;
+        document.getElementById('thumbsUp').addEventListener('click', () => sendFeedback('up'));
+        document.getElementById('thumbsDown').addEventListener('click', () => sendFeedback('down'));
+
+        function sendFeedback(type) {
+            if (feedbackSent) return;
+            feedbackSent = true;
+            fetch('/feedback', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ query: lastQueryText, mode: currentMode, feedback: type })
+            }).catch(err => console.error('Feedback failed:', err));
+            document.getElementById('thumbsUp').disabled = true;
+            document.getElementById('thumbsDown').disabled = true;
+            if (type === 'up') document.getElementById('thumbsUp').classList.add('selected-up');
+            else document.getElementById('thumbsDown').classList.add('selected-down');
+            document.getElementById('feedbackThanks').style.display = 'inline';
         }
 
         function addToHistory(query) {

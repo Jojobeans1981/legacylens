@@ -39,7 +39,7 @@
 - **Why:** Zero infrastructure, built-in inference API for embeddings, cosine similarity, generous free tier
 - **Managed vs self-hosted:** Managed — no time to operate Qdrant/Weaviate/pgvector
 - **Filtering:** Metadata filters on `routine_name` for exact routine queries (added to improve precision)
-- **Hybrid search:** Not implemented. Could add BM25 keyword search as future improvement.
+- **Hybrid search:** BM25 keyword search (via `rank_bm25`) combined with vector search using Reciprocal Rank Fusion (RRF). Weights: 70% vector, 30% BM25. K=60 for RRF smoothing.
 - **Scaling:** Serverless auto-scales. 4,037 vectors is small — no scaling concerns.
 
 ### 7. Embedding Strategy
@@ -59,7 +59,7 @@
 ### 9. Retrieval Pipeline
 - **Top-k:** 5 (increased from 3 to meet requirements)
 - **Score threshold:** 0.35 cosine similarity — chunks below this are dropped
-- **Re-ranking:** Not implemented. Could add cross-encoder re-ranking as improvement.
+- **Re-ranking:** Heuristic re-ranking with 4 boost signals: exact routine name match (+0.15), query term density (+0.10), chunk type boost (+0.05 for subroutine/function), partial routine name match (+0.10). Zero-latency impact (pure string ops on 5-10 chunks).
 - **Context window management:** Cap 800 chars per chunk in LLM context. 5 chunks max.
 - **Query enhancement:** Metadata filter extracts routine names from queries (e.g., "What does DGEMM do?" filters to routine_name=DGEMM). Falls back to unfiltered vector search.
 
@@ -95,8 +95,8 @@
 
 ### 13. Evaluation Strategy
 - **Retrieval precision:** Visible in UI — every chunk shows its cosine similarity score (0-100%). Dashboard shows score distribution histogram.
-- **Ground truth dataset:** Not formally created. Manual testing with known routines (DGEMM, DSYEV, DGETRF).
-- **User feedback:** Not implemented. Could add thumbs up/down on answers as future improvement.
+- **Ground truth dataset:** 18 curated test queries with expected routine matches. Automated evaluation via `/eval/run` computes MRR, Hit@1, Hit@3, Hit@5, and per-query latency. Results stored in SQLite for trend tracking.
+- **User feedback:** Thumbs up/down on every answer. Stored in SQLite with query, mode, and timestamp. Dashboard shows satisfaction percentage, counts, and recent feedback table. Stats available via `/api/feedback-stats`.
 - **Improvement made:** Added metadata filtering after observing that "What does DGEMM do?" was retrieving DGEMLQT instead of DGEMM.
 
 ### 14. Performance Optimization

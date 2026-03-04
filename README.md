@@ -44,6 +44,10 @@ A production-ready RAG system that makes BLAS, LAPACK, and ScaLAPACK Fortran cod
 ## Features
 
 - **5 Query Modes**: Query, Explain, Docs, Patterns, Translate — all with streaming SSE
+- **Hybrid Search**: Vector (Pinecone cosine) + BM25 keyword search merged via Reciprocal Rank Fusion
+- **Heuristic Re-ranking**: 4 boost signals — exact name match, term density, chunk type, partial name match
+- **Ground Truth Evaluation**: 18 curated test queries with MRR, Hit@1/3/5 metrics and trend tracking
+- **User Feedback**: Thumbs up/down on answers with satisfaction tracking on dashboard
 - **Routine Explorer**: Searchable/filterable table with complexity metrics (LOC, variables, calls, nesting depth)
 - **Complexity Metrics**: Per-routine LOC, variable count, call count, and nesting depth computed during ingestion
 - **Compare Mode**: Side-by-side comparison of any two routines — metrics, callers, callees
@@ -51,7 +55,7 @@ A production-ready RAG system that makes BLAS, LAPACK, and ScaLAPACK Fortran cod
 - **Call Graph**: Interactive D3.js force-directed graph of routine call dependencies
 - **Translation View**: Side-by-side Fortran → Python/NumPy comparison
 - **Conversation Memory**: Multi-turn follow-up queries with context
-- **Dashboard**: Real-time charts (latency, mode distribution, cost tracking)
+- **Dashboard**: Real-time charts (latency, mode distribution, cost, satisfaction)
 - **Query Cache**: SHA-256 keyed in-memory cache with configurable TTL
 - **Input Validation**: Pydantic field validators with length limits
 - **Rate Limiting**: Sliding window per-IP rate limiter on query endpoints
@@ -99,6 +103,12 @@ Visit `http://localhost:8000` for the query UI and `/dashboard` for observabilit
 | GET | `/api/dead-code` | Unreferenced routines (dead code detection) |
 | GET | `/api/call-graph` | Call graph data with depth traversal |
 | GET | `/api/cache-stats` | Cache hit/miss statistics |
+| POST | `/feedback` | Submit thumbs up/down feedback |
+| GET | `/api/feedback-stats` | Feedback counts and satisfaction |
+| POST | `/eval/seed` | Seed ground truth test cases (API key required) |
+| GET | `/eval/ground-truth` | View ground truth test cases |
+| POST | `/eval/run` | Run retrieval evaluation (API key required) |
+| GET | `/eval/results` | View past evaluation results |
 | GET | `/debug/env` | Debug endpoint (API key required) |
 
 ## Project Structure
@@ -108,7 +118,7 @@ grimoire/
 ├── main.py           # FastAPI app with all routes + rate limiting
 ├── config.py         # Centralized configuration (env-overridable)
 ├── ingest.py         # Multi-source ingestion pipeline
-├── retrieval.py      # RAG retrieval with score filtering
+├── retrieval.py      # Hybrid retrieval (vector + BM25) with re-ranking
 ├── chunker.py        # Fortran syntax-aware chunking
 ├── embed.py          # Pinecone Inference API embeddings
 ├── llm.py            # Claude API wrapper with streaming

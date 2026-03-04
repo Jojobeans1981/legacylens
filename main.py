@@ -312,6 +312,8 @@ async def ingest(request: Request):
         index = _get_index()
         result = run_ingestion(source_dirs=source_dirs, index=index)
         _query_cache.clear()
+        from retrieval import invalidate_bm25_cache
+        invalidate_bm25_cache()
         resp = result.model_dump()
         resp["source_dirs_used"] = source_dirs
         return resp
@@ -521,3 +523,80 @@ async def api_errors():
         return JSONResponse(content=[dict(row) for row in rows])
     except Exception as e:
         return JSONResponse(content={"error": str(e)}, status_code=500)
+
+
+# ─── Feedback API ────────────────────────────────────────────────────────────
+
+@app.post("/feedback")
+async def feedback_endpoint(request: Request):
+    """Record user feedback (thumbs up/down)."""
+    from models import FeedbackRequest
+    from db import log_feedback
+    from pydantic import ValidationError
+
+    body = await request.json()
+    try:
+        fb = FeedbackRequest(**body)
+    except ValidationError as e:
+        raise HTTPException(status_code=422, detail=e.errors())
+
+    log_feedback(query=fb.query, mode=fb.mode, feedback=fb.feedback, comment=fb.comment)
+    return {"status": "ok"}
+
+
+@app.get("/api/feedback-stats")
+async def api_feedback_stats():
+    """Get aggregated feedback statistics."""
+    from db import get_feedback_stats
+    try:
+        stats = get_feedback_stats()
+        return JSONResponse(content=stats)
+    except Exception as e:
+        return JSONResponse(content={"error": str(e)}, status_code=500)
+
+
+# ─── Evaluation API ──────────────────────────────────────────────────────────
+
+@app.post("/eval/seed")
+async def eval_seed(request: Request):
+    """Seed ground truth test cases."""
+    _require_api_key(request)
+    from db import seed_ground_truth
+    count = seed_ground_truth()
+    return {"seeded": count}
+
+
+@app.get("/eval/ground-truth")
+async def eval_ground_truth():
+    """View all ground truth test cases."""
+    from db import get_ground_truth
+    return JSONResponse(content=get_ground_truth())
+
+
+@app.post("/eval/run")
+async def eval_run(request: Request):
+    """Run evaluation against ground truth."""
+    _require_api_key(request)
+    from retrieval import run_evaluation
+    try:
+        index = _get_index()
+        result = await asyncio.to_thread(run_evaluation, index)
+        return JSONResponse(content=result)
+    except Exception as e:
+        from db import log_error
+        log_error("/eval/run", type(e).__name__, str(e))
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/eval/results")
+async def eval_results():
+    """View past evaluation results."""
+    from db import get_eval_results
+    results = get_eval_results()
+    for r in results:
+        if r.get("details"):
+            try:
+                r["details"] = json.loads(r["details"])
+            except (json.JSONDecodeError, TypeError):
+                pass
+    return JSONResponse(content=results)

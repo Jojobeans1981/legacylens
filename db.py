@@ -75,6 +75,47 @@ def _create_tables(conn: sqlite3.Connection):
             file_path TEXT,
             line_number INTEGER
         );
+
+        CREATE TABLE IF NOT EXISTS query_feedback (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            timestamp TEXT NOT NULL,
+            query TEXT NOT NULL,
+            mode TEXT,
+            feedback TEXT NOT NULL,
+            comment TEXT DEFAULT ''
+        );
+
+        CREATE TABLE IF NOT EXISTS chunk_content (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            chunk_id TEXT UNIQUE,
+            routine_name TEXT,
+            file_path TEXT,
+            chunk_type TEXT,
+            start_line INTEGER,
+            end_line INTEGER,
+            content TEXT
+        );
+
+        CREATE TABLE IF NOT EXISTS ground_truth (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            query TEXT NOT NULL,
+            expected_routines TEXT NOT NULL,
+            category TEXT DEFAULT 'general',
+            difficulty TEXT DEFAULT 'medium'
+        );
+
+        CREATE TABLE IF NOT EXISTS eval_results (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            timestamp TEXT NOT NULL,
+            run_name TEXT,
+            total_queries INTEGER,
+            mrr REAL,
+            hit_at_1 REAL,
+            hit_at_3 REAL,
+            hit_at_5 REAL,
+            avg_latency_ms REAL,
+            details TEXT
+        );
     """)
     conn.commit()
     # Migrate existing routine_index tables missing new columns
@@ -447,6 +488,167 @@ def get_dead_code() -> list[dict]:
                )
                AND r.chunk_type != 'program'
                ORDER BY r.library, r.routine_name"""
+        ).fetchall()
+        return [dict(r) for r in rows]
+    finally:
+        conn.close()
+
+
+def log_feedback(query: str, mode: str, feedback: str, comment: str = ""):
+    """Log user feedback (thumbs up/down)."""
+    conn = get_connection()
+    try:
+        conn.execute(
+            """INSERT INTO query_feedback (timestamp, query, mode, feedback, comment)
+               VALUES (?, ?, ?, ?, ?)""",
+            (datetime.now(timezone.utc).isoformat(), query, mode, feedback, comment)
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def get_feedback_stats() -> dict:
+    """Get aggregated feedback statistics."""
+    conn = get_connection()
+    try:
+        total = conn.execute("SELECT COUNT(*) FROM query_feedback").fetchone()[0]
+        thumbs_up = conn.execute("SELECT COUNT(*) FROM query_feedback WHERE feedback = 'up'").fetchone()[0]
+        thumbs_down = conn.execute("SELECT COUNT(*) FROM query_feedback WHERE feedback = 'down'").fetchone()[0]
+        recent = conn.execute(
+            """SELECT timestamp, query, mode, feedback, comment
+               FROM query_feedback ORDER BY id DESC LIMIT 20"""
+        ).fetchall()
+        by_mode = conn.execute(
+            """SELECT mode, feedback, COUNT(*) as cnt
+               FROM query_feedback GROUP BY mode, feedback"""
+        ).fetchall()
+        mode_stats = {}
+        for row in by_mode:
+            m = row[0] or "unknown"
+            if m not in mode_stats:
+                mode_stats[m] = {"up": 0, "down": 0}
+            mode_stats[m][row[1]] = row[2]
+        satisfaction = round(thumbs_up / total * 100, 1) if total > 0 else 0.0
+        return {
+            "total_feedback": total,
+            "thumbs_up": thumbs_up,
+            "thumbs_down": thumbs_down,
+            "satisfaction_pct": satisfaction,
+            "by_mode": mode_stats,
+            "recent": [dict(r) for r in recent],
+        }
+    finally:
+        conn.close()
+
+
+def log_chunk_content(chunks: list):
+    """Store chunk content for BM25 keyword search."""
+    conn = get_connection()
+    try:
+        conn.execute("DELETE FROM chunk_content")
+        for i, c in enumerate(chunks):
+            if isinstance(c, dict):
+                content = c.get("content", "")
+                routine_name = c.get("routine_name", "")
+                file_path = c.get("file_path", "")
+                chunk_type = c.get("chunk_type", "")
+                start_line = c.get("start_line", 0)
+                end_line = c.get("end_line", 0)
+            else:
+                content = c.content
+                routine_name = c.routine_name or ""
+                file_path = c.file_path
+                chunk_type = c.chunk_type
+                start_line = c.start_line
+                end_line = c.end_line
+            conn.execute(
+                """INSERT INTO chunk_content
+                   (chunk_id, routine_name, file_path, chunk_type, start_line, end_line, content)
+                   VALUES (?, ?, ?, ?, ?, ?, ?)""",
+                (f"chunk_{i}", routine_name, file_path, chunk_type, start_line, end_line,
+                 content[:1000])
+            )
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def seed_ground_truth():
+    """Seed the ground truth table with test queries. Idempotent."""
+    conn = get_connection()
+    try:
+        existing = conn.execute("SELECT COUNT(*) FROM ground_truth").fetchone()[0]
+        if existing > 0:
+            return existing
+        test_cases = [
+            ("What does DGEMM do?", "DGEMM", "explain", "easy"),
+            ("How does matrix-vector multiplication work in BLAS?", "DGEMV,SGEMV", "explain", "medium"),
+            ("Show me the DAXPY routine", "DAXPY", "lookup", "easy"),
+            ("What is the purpose of DTRSM?", "DTRSM", "explain", "easy"),
+            ("How does BLAS compute the dot product of two vectors?", "DDOT,SDOT", "explain", "medium"),
+            ("Explain the DSYRK symmetric rank-k update", "DSYRK", "explain", "easy"),
+            ("What routine scales a vector by a constant?", "DSCAL,SSCAL", "concept", "medium"),
+            ("How does BLAS compute the Euclidean norm?", "DNRM2,SNRM2", "concept", "medium"),
+            ("What does DCOPY do?", "DCOPY", "explain", "easy"),
+            ("Show me triangular matrix-vector multiply", "DTRMV,STRMV", "concept", "medium"),
+            ("How does DGER perform outer product?", "DGER", "explain", "medium"),
+            ("What is IDAMAX and how does it find the maximum?", "IDAMAX", "explain", "easy"),
+            ("Explain symmetric matrix-vector multiplication", "DSYMV,SSYMV", "concept", "medium"),
+            ("How does BLAS swap two vectors?", "DSWAP,SSWAP", "concept", "medium"),
+            ("What routine solves triangular systems?", "DTRSV,STRSV", "concept", "hard"),
+            ("Show me complex matrix multiplication", "ZGEMM,CGEMM", "lookup", "medium"),
+            ("How does DROTG compute Givens rotation?", "DROTG", "explain", "hard"),
+            ("What is the difference between DGEMM and DSYMM?", "DGEMM,DSYMM", "compare", "hard"),
+        ]
+        for query, routines, category, difficulty in test_cases:
+            conn.execute(
+                "INSERT INTO ground_truth (query, expected_routines, category, difficulty) VALUES (?, ?, ?, ?)",
+                (query, routines, category, difficulty)
+            )
+        conn.commit()
+        return len(test_cases)
+    finally:
+        conn.close()
+
+
+def get_ground_truth() -> list[dict]:
+    """Get all ground truth test cases."""
+    conn = get_connection()
+    try:
+        rows = conn.execute("SELECT id, query, expected_routines, category, difficulty FROM ground_truth").fetchall()
+        return [dict(r) for r in rows]
+    finally:
+        conn.close()
+
+
+def save_eval_result(run_name: str, total_queries: int, mrr: float,
+                     hit_at_1: float, hit_at_3: float, hit_at_5: float,
+                     avg_latency_ms: float, details: str):
+    """Save an evaluation run result."""
+    conn = get_connection()
+    try:
+        conn.execute(
+            """INSERT INTO eval_results
+               (timestamp, run_name, total_queries, mrr, hit_at_1, hit_at_3, hit_at_5,
+                avg_latency_ms, details)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            (datetime.now(timezone.utc).isoformat(), run_name, total_queries,
+             mrr, hit_at_1, hit_at_3, hit_at_5, avg_latency_ms, details)
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def get_eval_results() -> list[dict]:
+    """Get all evaluation run results."""
+    conn = get_connection()
+    try:
+        rows = conn.execute(
+            """SELECT id, timestamp, run_name, total_queries, mrr, hit_at_1, hit_at_3,
+                      hit_at_5, avg_latency_ms, details
+               FROM eval_results ORDER BY id DESC"""
         ).fetchall()
         return [dict(r) for r in rows]
     finally:

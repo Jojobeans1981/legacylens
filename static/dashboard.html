@@ -232,6 +232,10 @@
                 <div class="metric-label">Total Tokens</div>
                 <div class="metric-value red" id="totalTokens">&mdash;</div>
             </div>
+            <div class="metric-card">
+                <div class="metric-label">Satisfaction</div>
+                <div class="metric-value green" id="satisfaction">&mdash;</div>
+            </div>
         </div>
 
         <!-- Charts -->
@@ -311,6 +315,19 @@
                 </table>
                 <p id="noIngestion" style="color:var(--text-dim);font-size:13px;padding:12px;">No ingestion runs yet.</p>
             </div>
+        </div>
+
+        <div class="section" style="margin-top:24px;">
+            <h2>User Feedback</h2>
+            <div style="display:flex;gap:24px;margin-bottom:16px;">
+                <div><span style="font-size:24px">&#128077;</span> <strong id="thumbsUpCount">0</strong></div>
+                <div><span style="font-size:24px">&#128078;</span> <strong id="thumbsDownCount">0</strong></div>
+            </div>
+            <table>
+                <thead><tr><th>Time</th><th>Query</th><th>Mode</th><th>Feedback</th></tr></thead>
+                <tbody id="feedbackLog"></tbody>
+            </table>
+            <p id="noFeedback" style="color:var(--text-dim);font-size:13px;padding:12px;">No feedback yet.</p>
         </div>
     </div>
 
@@ -536,9 +553,42 @@
             return (text || '').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
         }
 
+        async function fetchFeedback() {
+            try {
+                const resp = await fetch('/api/feedback-stats');
+                if (!resp.ok) return;
+                const data = await resp.json();
+                document.getElementById('thumbsUpCount').textContent = data.thumbs_up || 0;
+                document.getElementById('thumbsDownCount').textContent = data.thumbs_down || 0;
+                document.getElementById('satisfaction').textContent =
+                    data.total > 0 ? data.satisfaction_pct + '%' : '\u2014';
+
+                const tbody = document.getElementById('feedbackLog');
+                const noFeedback = document.getElementById('noFeedback');
+                if (data.recent && data.recent.length > 0) {
+                    noFeedback.style.display = 'none';
+                    tbody.innerHTML = data.recent.map(f => `
+                        <tr>
+                            <td class="ts">${formatTime(f.timestamp)}</td>
+                            <td class="query-text" title="${escapeAttr(f.query)}">${escapeHtml(f.query)}</td>
+                            <td><span class="badge badge-${f.mode || 'query'}">${f.mode || 'query'}</span></td>
+                            <td>${f.feedback === 'up' ? '&#128077;' : '&#128078;'}</td>
+                        </tr>
+                    `).join('');
+                } else {
+                    tbody.innerHTML = '';
+                    noFeedback.style.display = 'block';
+                }
+            } catch (e) {
+                console.error('Failed to fetch feedback:', e);
+            }
+        }
+
         // Initial fetch + auto-refresh
         fetchStats();
+        fetchFeedback();
         setInterval(fetchStats, 10000);
+        setInterval(fetchFeedback, 10000);
     </script>
 </body>
 </html>

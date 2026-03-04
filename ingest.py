@@ -7,7 +7,7 @@ from pathlib import Path
 
 from chunker import chunk_fortran_file
 from models import Chunk, IngestResult
-from db import log_ingestion, log_routines, log_call_graph
+from db import log_ingestion, log_routines, log_call_graph, log_chunk_content
 from embed import embed_texts
 from config import UPSERT_BATCH_SIZE, PINECONE_CLOUD, PINECONE_REGION, EMBED_DIMENSION
 
@@ -211,6 +211,7 @@ def run_ingestion(source_dirs: list[str], index=None) -> IngestResult:
     # Populate routine index and call graph
     print("Building routine index and call graph...")
     log_routines(all_chunks, metrics=routine_metrics, source_dir_map=source_dir_map)
+    log_chunk_content(all_chunks)
     edges = _parse_call_graph(all_chunks)
     log_call_graph(edges)
     print(f"  {len([c for c in all_chunks if c.routine_name])} routines indexed, {len(edges)} call edges found")

@@ -10,6 +10,10 @@ CACHE_TTL = int(os.getenv("CACHE_TTL", "3600"))  # seconds
 SCORE_THRESHOLD = float(os.getenv("SCORE_THRESHOLD", "0.35"))
 DEFAULT_TOP_K = int(os.getenv("DEFAULT_TOP_K", "5"))
 
+# ─── Hybrid Search ──────────────────────────────────────────────────────────
+VECTOR_WEIGHT = float(os.getenv("VECTOR_WEIGHT", "0.7"))
+BM25_WEIGHT = float(os.getenv("BM25_WEIGHT", "0.3"))
+
 # ─── LLM ─────────────────────────────────────────────────────────────────────
 CLAUDE_MODEL = os.getenv("CLAUDE_MODEL", "claude-haiku-4-5-20251001")
 LLM_MAX_TOKENS = int(os.getenv("LLM_MAX_TOKENS", "1024"))

@@ -84,3 +84,10 @@ class HealthResponse(BaseModel):
     status: str
     model_loaded: bool
     index_connected: bool
+
+
+class FeedbackRequest(BaseModel):
+    query: str = Field(..., min_length=1, max_length=MAX_QUERY_LENGTH)
+    mode: Optional[str] = "query"
+    feedback: str = Field(..., pattern=r"^(up|down)$")
+    comment: Optional[str] = Field("", max_length=500)
