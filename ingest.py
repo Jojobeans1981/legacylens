@@ -140,19 +140,23 @@ def run_ingestion(source_dirs: list[str], index=None) -> IngestResult:
     # Chunk all files
     all_chunks: list[Chunk] = []
     files_processed = []
+    source_dir_map = {}  # file_path -> source_dir for library detection
     for filepath in files:
         chunks = chunk_fortran_file(filepath)
         # Find which source_dir this file belongs to for relative paths
         rel_path = filepath.name
+        matched_source_dir = ""
         for source_dir in source_dirs:
             source_path = Path(source_dir)
             try:
                 rel_path = str(filepath.relative_to(source_path))
+                matched_source_dir = source_dir
                 break
             except ValueError:
                 continue
         for chunk in chunks:
             chunk.file_path = rel_path
+        source_dir_map[rel_path] = matched_source_dir
         all_chunks.extend(chunks)
         files_processed.append(rel_path)
 
@@ -206,7 +210,7 @@ def run_ingestion(source_dirs: list[str], index=None) -> IngestResult:
 
     # Populate routine index and call graph
     print("Building routine index and call graph...")
-    log_routines(all_chunks, metrics=routine_metrics)
+    log_routines(all_chunks, metrics=routine_metrics, source_dir_map=source_dir_map)
     edges = _parse_call_graph(all_chunks)
     log_call_graph(edges)
     print(f"  {len([c for c in all_chunks if c.routine_name])} routines indexed, {len(edges)} call edges found")

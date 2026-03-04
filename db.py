@@ -240,24 +240,28 @@ def get_stats() -> dict:
         conn.close()
 
 
-def _detect_library(file_path: str) -> str:
-    """Detect library from file path."""
+def _detect_library(file_path: str, source_dir: str = "") -> str:
+    """Detect library from file path and/or source directory."""
     lower = (file_path or "").lower()
-    if "scalapack" in lower or "pblas" in lower or "blacs" in lower:
+    src_lower = (source_dir or "").lower()
+    combined = f"{src_lower}/{lower}"
+    if "scalapack" in combined or "pblas" in combined or "blacs" in combined:
         return "ScaLAPACK"
-    if "lapack" in lower:
+    if "lapack" in combined:
         return "LAPACK"
     return "BLAS"
 
 
-def log_routines(chunks: list, metrics: dict = None):
+def log_routines(chunks: list, metrics: dict = None, source_dir_map: dict = None):
     """Populate routine_index from ingested chunks.
 
     Args:
         chunks: List of Chunk objects or dicts
         metrics: Optional dict mapping routine_name -> {loc, var_count, call_count, nesting_depth}
+        source_dir_map: Optional dict mapping file_path -> source_dir for library detection
     """
     metrics = metrics or {}
+    source_dir_map = source_dir_map or {}
     conn = get_connection()
     try:
         conn.execute("DELETE FROM routine_index")
@@ -277,12 +281,13 @@ def log_routines(chunks: list, metrics: dict = None):
             if not name:
                 continue
             m = metrics.get(name, {})
+            src_dir = source_dir_map.get(fpath, "")
             conn.execute(
                 """INSERT INTO routine_index
                    (routine_name, file_path, chunk_type, start_line, end_line, library,
                     loc, var_count, call_count, nesting_depth)
                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-                (name, fpath, ctype, sline, eline, _detect_library(fpath),
+                (name, fpath, ctype, sline, eline, _detect_library(fpath, src_dir),
                  m.get("loc", 0), m.get("var_count", 0),
                  m.get("call_count", 0), m.get("nesting_depth", 0))
             )
