@@ -1,5 +1,6 @@
 """Claude API wrapper with streaming for GRIMOIRE."""
 
+import json
 import os
 from typing import AsyncGenerator
 
@@ -8,51 +9,21 @@ import anthropic
 from config import CLAUDE_MODEL, LLM_MAX_TOKENS, INPUT_COST_PER_MTOK, OUTPUT_COST_PER_MTOK
 
 
-SYSTEM_PROMPTS = {
-    "query": (
-        "You are an expert Fortran and legacy systems engineer analyzing the BLAS "
-        "(Basic Linear Algebra Subprograms) library. Answer the developer's question "
-        "using ONLY the provided code chunks. Cite every factual claim with "
-        "[filename:start_line-end_line]. If the context does not contain enough "
-        "information to answer, say so explicitly and suggest a more specific query. "
-        "Never invent code, function names, or line numbers. Be concise."
-    ),
-    "explain": (
-        "You are an expert Fortran and legacy systems engineer analyzing the BLAS "
-        "(Basic Linear Algebra Subprograms) library. Explain the purpose, mathematical "
-        "operation, inputs, outputs, and algorithm of the code in the provided chunks. "
-        "Use plain English accessible to a developer unfamiliar with Fortran. "
-        "Cite every factual claim with [filename:start_line-end_line]. "
-        "Never invent code, function names, or line numbers. Be concise."
-    ),
-    "docgen": (
-        "You are an expert Fortran and legacy systems engineer analyzing the BLAS "
-        "(Basic Linear Algebra Subprograms) library. Generate a complete Fortran "
-        "comment header block in standard BLAS documentation format for the routine "
-        "shown in the provided code chunks. Include: Purpose, Arguments (with types, "
-        "dimensions, intent), Further Details, and References. "
-        "Cite every factual claim with [filename:start_line-end_line]. "
-        "Never invent code, function names, or line numbers. Be concise."
-    ),
-    "translate": (
-        "You are an expert Fortran and legacy systems engineer analyzing the BLAS "
-        "(Basic Linear Algebra Subprograms) library. Provide a Python/NumPy equivalent "
-        "of the Fortran routine shown in the provided code chunks. Show a side-by-side "
-        "comparison explaining how each Fortran construct maps to Python. Include the "
-        "NumPy/SciPy function call that replaces the BLAS routine if one exists. "
-        "Cite every factual claim with [filename:start_line-end_line]. "
-        "Never invent code, function names, or line numbers. Be concise."
-    ),
-    "patterns": (
-        "You are an expert Fortran and legacy systems engineer analyzing the BLAS "
-        "(Basic Linear Algebra Subprograms) library. Analyze the structural patterns, "
-        "coding conventions, and similarities in the provided code chunks. Identify "
-        "common patterns such as: argument validation, loop structures, special case "
-        "handling, memory access patterns, and optimization techniques. "
-        "Cite every factual claim with [filename:start_line-end_line]. "
-        "Never invent code, function names, or line numbers. Be concise."
-    ),
+_BASE_PROMPT = (
+    "You are an expert Fortran/legacy-systems engineer for BLAS/LAPACK/ScaLAPACK. "
+    "Use ONLY the provided code chunks. Cite facts as [file:start-end]. "
+    "Never invent code or line numbers. Be concise."
+)
+
+_MODE_INSTRUCTIONS = {
+    "query": "Answer the developer's question. If context is insufficient, say so and suggest a refined query.",
+    "explain": "Explain the purpose, math operation, inputs, outputs, and algorithm in plain English.",
+    "docgen": "Generate a Fortran comment header: Purpose, Arguments (types, dims, intent), Details, References.",
+    "translate": "Provide a Python/NumPy equivalent. Show side-by-side Fortran→Python mapping. Include the NumPy/SciPy replacement call if one exists.",
+    "patterns": "Analyze structural patterns: argument validation, loop structures, special-case handling, memory access, optimization.",
 }
+
+SYSTEM_PROMPTS = {mode: f"{_BASE_PROMPT} {instruction}" for mode, instruction in _MODE_INSTRUCTIONS.items()}
 
 _async_client = None
 
@@ -117,7 +88,6 @@ async def generate_answer(query: str, context: str,
     cost = (input_tokens * INPUT_COST_PER_TOKEN) + (output_tokens * OUTPUT_COST_PER_TOKEN)
 
     # Yield metadata as a special marker
-    import json
     metadata = json.dumps({
         "input_tokens": input_tokens,
         "output_tokens": output_tokens,

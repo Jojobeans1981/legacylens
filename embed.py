@@ -2,6 +2,7 @@
 
 import os
 import time
+from functools import lru_cache
 
 from config import EMBED_MODEL, EMBED_DIMENSION, EMBED_BATCH_SIZE, EMBED_MAX_RETRIES, EMBED_RATE_LIMIT_DELAY
 
@@ -52,12 +53,13 @@ def embed_texts(texts: list[str]) -> list[list[float]]:
     return results
 
 
-def embed_query(text: str) -> list[float]:
-    """Embed a single query string."""
+@lru_cache(maxsize=256)
+def embed_query(text: str) -> tuple[float, ...]:
+    """Embed a single query string. Cached to avoid re-embedding repeated queries."""
     pc = _get_client()
     embeddings = pc.inference.embed(
         model=EMBED_MODEL,
         inputs=[text],
         parameters={"input_type": "query", "truncate": "END"}
     )
-    return embeddings[0].values
+    return tuple(embeddings[0].values)  # tuple for lru_cache hashability

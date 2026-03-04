@@ -17,8 +17,8 @@ def retrieve(query: str, index,
     Returns:
         RetrievalResult with chunks, assembled context, and found flag
     """
-    # Embed query via HF Inference API
-    query_vector = embed_query(query)
+    # Embed query via Pinecone Inference API (cached)
+    query_vector = list(embed_query(query))
 
     # Query Pinecone (fetch extra to allow for filtering)
     results = index.query(
@@ -48,12 +48,14 @@ def retrieve(query: str, index,
     if not chunks:
         return RetrievalResult(chunks=[], context="", found=False)
 
-    # Assemble context string
+    # Assemble context string (cap per-chunk to reduce input tokens)
+    MAX_CONTEXT_PER_CHUNK = 500
     context_parts = []
     for chunk in chunks:
+        content = chunk.content[:MAX_CONTEXT_PER_CHUNK]
         context_parts.append(
             f"[Source: {chunk.file_path} lines {chunk.start_line}-{chunk.end_line}]\n"
-            f"{chunk.content}\n---"
+            f"{content}\n---"
         )
     context = "\n\n".join(context_parts)
 

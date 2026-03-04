@@ -1,5 +1,6 @@
 """GRIMOIRE — FastAPI application for RAG-powered BLAS codebase querying."""
 
+import asyncio
 import collections
 import hashlib
 import json
@@ -315,9 +316,9 @@ async def _handle_query(query_request, mode: str):
     except Exception as e:
         raise HTTPException(status_code=503, detail=f"Pinecone not ready: {e}")
 
-    # Retrieval
+    # Retrieval (run in thread pool to avoid blocking the event loop)
     try:
-        retrieval_result = retrieve(query=query_request.query, index=index)
+        retrieval_result = await asyncio.to_thread(retrieve, query=query_request.query, index=index)
     except Exception as e:
         log_error(f"/{mode}", type(e).__name__, str(e))
         raise HTTPException(status_code=500, detail=f"Retrieval failed: {e}")
