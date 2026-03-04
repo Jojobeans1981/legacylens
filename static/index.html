@@ -348,9 +348,9 @@
                     <input type="text" id="fileInput" placeholder="File (optional)">
                 </div>
                 <div class="query-actions">
-                    <button class="new-conv-btn" id="newConvBtn" onclick="newConversation()">New Conversation</button>
+                    <button class="new-conv-btn" id="newConvBtn">New Conversation</button>
                     <span class="shortcut-hint">Ctrl+Enter</span>
-                    <button class="submit-btn" id="submitBtn" onclick="submitQuery()">Submit</button>
+                    <button class="submit-btn" id="submitBtn">Submit</button>
                 </div>
             </div>
         </div>
@@ -367,7 +367,7 @@
                 <div class="answer-panel">
                     <div class="answer-header">
                         <h3>Answer <span class="cache-badge" id="cacheBadge">Cached</span></h3>
-                        <button class="copy-btn" onclick="copyAnswer()">Copy</button>
+                        <button class="copy-btn" id="copyBtn">Copy</button>
                     </div>
                     <div class="answer-content" id="answerContent"></div>
                     <div id="translationView"></div>
@@ -437,43 +437,43 @@
             </div>
 
             <div class="try-heading">Try an example</div>
-            <div class="examples-grid">
-                <div class="example-card" onclick="runExample('What does DGEMM do?','query')">
+            <div class="examples-grid" id="examplesGrid">
+                <div class="example-card" data-query="What does DGEMM do?" data-mode="query">
                     <span class="example-badge badge-query" style="background:rgba(88,166,255,0.15);color:var(--accent);">Query</span>
                     <div class="example-query">What does DGEMM do?</div>
                     <div class="example-desc">Double-precision general matrix multiply from BLAS</div>
                 </div>
-                <div class="example-card" onclick="runExample('Explain the DSYEV eigenvalue solver','explain')">
+                <div class="example-card" data-query="Explain the DSYEV eigenvalue solver" data-mode="explain">
                     <span class="example-badge" style="background:rgba(63,185,80,0.15);color:var(--green);">Explain</span>
                     <div class="example-query">Explain DSYEV eigenvalue solver</div>
                     <div class="example-desc">Symmetric eigenvalue decomposition from LAPACK</div>
                 </div>
-                <div class="example-card" onclick="runExample('Generate docs for SGEMM','docgen')">
+                <div class="example-card" data-query="Generate docs for SGEMM" data-mode="docgen">
                     <span class="example-badge" style="background:rgba(188,140,255,0.15);color:var(--purple);">Docs</span>
                     <div class="example-query">Generate docs for SGEMM</div>
                     <div class="example-desc">Auto-generate BLAS-style documentation header</div>
                 </div>
-                <div class="example-card" onclick="runExample('Find error handling patterns','patterns')">
+                <div class="example-card" data-query="Find error handling patterns" data-mode="patterns">
                     <span class="example-badge" style="background:rgba(210,153,34,0.15);color:var(--orange);">Patterns</span>
                     <div class="example-query">Error handling patterns</div>
                     <div class="example-desc">Discover XERBLA usage and validation conventions</div>
                 </div>
-                <div class="example-card" onclick="runExample('Translate DTRSM to Python/NumPy','translate')">
+                <div class="example-card" data-query="Translate DTRSM to Python/NumPy" data-mode="translate">
                     <span class="example-badge" style="background:rgba(248,81,73,0.15);color:var(--red);">Translate</span>
                     <div class="example-query">Translate DTRSM to NumPy</div>
                     <div class="example-desc">Triangular solve with side-by-side Python mapping</div>
                 </div>
-                <div class="example-card" onclick="runExample('What routines modify matrix arguments in-place?','query')">
+                <div class="example-card" data-query="What routines modify matrix arguments in-place?" data-mode="query">
                     <span class="example-badge" style="background:rgba(88,166,255,0.15);color:var(--accent);">Query</span>
                     <div class="example-query">In-place matrix modifications</div>
                     <div class="example-desc">Find routines that overwrite input arguments</div>
                 </div>
-                <div class="example-card" onclick="runExample('Show ScaLAPACK parallel matrix operations','query')">
+                <div class="example-card" data-query="Show ScaLAPACK parallel matrix operations" data-mode="query">
                     <span class="example-badge" style="background:rgba(188,140,255,0.15);color:var(--purple);">Query</span>
                     <div class="example-query">ScaLAPACK parallel operations</div>
                     <div class="example-desc">Distributed matrix routines for parallel computing</div>
                 </div>
-                <div class="example-card" onclick="runExample('Dependencies of DGEMV','query')">
+                <div class="example-card" data-query="Dependencies of DGEMV" data-mode="query">
                     <span class="example-badge" style="background:rgba(88,166,255,0.15);color:var(--accent);">Query</span>
                     <div class="example-query">Dependencies of DGEMV</div>
                     <div class="example-desc">Matrix-vector multiply call chain analysis</div>
@@ -517,6 +517,17 @@
         // Mode selector
         document.querySelectorAll('.mode-btn').forEach(btn => {
             btn.addEventListener('click', () => setMode(btn.dataset.mode));
+        });
+
+        // Button event listeners
+        document.getElementById('submitBtn').addEventListener('click', submitQuery);
+        document.getElementById('newConvBtn').addEventListener('click', newConversation);
+        document.getElementById('copyBtn').addEventListener('click', copyAnswer);
+
+        // Example cards (event delegation)
+        document.getElementById('examplesGrid').addEventListener('click', e => {
+            const card = e.target.closest('.example-card');
+            if (card) runExample(card.dataset.query, card.dataset.mode);
         });
 
         // Ctrl+Enter shortcut
@@ -753,7 +764,7 @@
                 const card = document.createElement('div');
                 card.className = 'chunk-card';
                 card.innerHTML = `
-                    <div class="chunk-header" onclick="this.nextElementSibling.style.display=this.nextElementSibling.style.display==='none'?'block':'none'">
+                    <div class="chunk-header">
                         <span class="chunk-file">${escapeHtml(chunk.file_path)}:${chunk.start_line}-${chunk.end_line}</span>
                         <div class="chunk-badges">
                             <span class="lib-badge ${libClass}">${libLabel}</span>
@@ -765,6 +776,10 @@
                     </div>
                 `;
                 container.appendChild(card);
+                card.querySelector('.chunk-header').addEventListener('click', function() {
+                    const code = this.nextElementSibling;
+                    code.style.display = code.style.display === 'none' ? 'block' : 'none';
+                });
             });
             container.querySelectorAll('code').forEach(block => hljs.highlightElement(block));
         }
@@ -796,10 +811,16 @@
             const list = document.getElementById('historyList');
             if (history.length === 0) { section.style.display = 'none'; return; }
             section.style.display = 'block';
-            list.innerHTML = history.map(q =>
-                `<div class="history-item" onclick="document.getElementById('queryInput').value='${q.replace(/'/g, "\\'")}'">` +
-                escapeHtml(q) + '</div>'
-            ).join('');
+            list.innerHTML = '';
+            history.forEach(q => {
+                const item = document.createElement('div');
+                item.className = 'history-item';
+                item.textContent = q;
+                item.addEventListener('click', () => {
+                    document.getElementById('queryInput').value = q;
+                });
+                list.appendChild(item);
+            });
         }
 
         renderHistory();

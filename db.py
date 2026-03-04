@@ -240,11 +240,18 @@ def log_routines(chunks: list):
     try:
         conn.execute("DELETE FROM routine_index")
         for c in chunks:
-            name = getattr(c, "routine_name", None) or c.get("routine_name", "") if isinstance(c, dict) else c.routine_name
-            fpath = c.get("file_path", "") if isinstance(c, dict) else c.file_path
-            ctype = c.get("chunk_type", "") if isinstance(c, dict) else c.chunk_type
-            sline = c.get("start_line", 0) if isinstance(c, dict) else c.start_line
-            eline = c.get("end_line", 0) if isinstance(c, dict) else c.end_line
+            if isinstance(c, dict):
+                name = c.get("routine_name", "")
+                fpath = c.get("file_path", "")
+                ctype = c.get("chunk_type", "")
+                sline = c.get("start_line", 0)
+                eline = c.get("end_line", 0)
+            else:
+                name = c.routine_name
+                fpath = c.file_path
+                ctype = c.chunk_type
+                sline = c.start_line
+                eline = c.end_line
             if not name:
                 continue
             conn.execute(

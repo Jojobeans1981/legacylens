@@ -27,12 +27,13 @@ _query_cache: dict[str, dict] = {}
 _rate_limits: dict[str, collections.deque] = {}
 
 
+RATE_LIMIT_WINDOW = 60  # seconds
+
 def _check_rate_limit(client_ip: str) -> bool:
     """Sliding window rate limiter. Returns True if request is allowed."""
     now = time.time()
     window = _rate_limits.setdefault(client_ip, collections.deque())
-    # Purge entries older than 60 seconds
-    while window and window[0] < now - 60:
+    while window and window[0] < now - RATE_LIMIT_WINDOW:
         window.popleft()
     if len(window) >= RATE_LIMIT_RPM:
         return False
@@ -55,10 +56,11 @@ def _cache_key(mode: str, query: str) -> str:
 def _cache_get(mode: str, query: str) -> dict | None:
     key = _cache_key(mode, query)
     entry = _query_cache.get(key)
-    if entry and (time.time() - entry["timestamp"]) < CACHE_TTL:
+    if not entry:
+        return None
+    if (time.time() - entry["timestamp"]) < CACHE_TTL:
         return entry
-    if entry:
-        _query_cache.pop(key, None)
+    _query_cache.pop(key, None)
     return None
 
 
