@@ -156,6 +156,36 @@ def get_stats() -> dict:
         chunks_indexed = latest_ingestion[0] if latest_ingestion else 0
         files_covered = latest_ingestion[1] if latest_ingestion else 0
 
+        # Latency series (last 20 queries, chronological order)
+        latency_rows = conn.execute(
+            "SELECT timestamp, latency_ms FROM query_log ORDER BY id DESC LIMIT 20"
+        ).fetchall()
+        latency_series = [{"timestamp": r[0], "latency_ms": r[1]} for r in reversed(latency_rows)]
+
+        # Cost by mode
+        cost_rows = conn.execute(
+            "SELECT mode, SUM(cost_usd) as total FROM query_log GROUP BY mode"
+        ).fetchall()
+        cost_by_mode = {r[0]: round(r[1] or 0, 6) for r in cost_rows}
+
+        # Queries by mode
+        mode_rows = conn.execute(
+            "SELECT mode, COUNT(*) as cnt FROM query_log GROUP BY mode"
+        ).fetchall()
+        queries_by_mode = {r[0]: r[1] for r in mode_rows}
+
+        # Average score
+        avg_score = conn.execute(
+            "SELECT AVG(top_score) FROM query_log WHERE top_score IS NOT NULL AND top_score > 0"
+        ).fetchone()[0] or 0.0
+
+        # Total tokens
+        token_row = conn.execute(
+            "SELECT SUM(input_tokens), SUM(output_tokens) FROM query_log"
+        ).fetchone()
+        total_input_tokens = token_row[0] or 0
+        total_output_tokens = token_row[1] or 0
+
         return {
             "total_queries": total_queries,
             "avg_latency_ms": round(avg_latency, 1),
@@ -166,6 +196,12 @@ def get_stats() -> dict:
             "recent_queries": recent_queries,
             "errors": error_list,
             "ingestion_history": ingestion_history,
+            "latency_series": latency_series,
+            "cost_by_mode": cost_by_mode,
+            "queries_by_mode": queries_by_mode,
+            "avg_score": round(avg_score, 3),
+            "total_input_tokens": total_input_tokens,
+            "total_output_tokens": total_output_tokens,
         }
     finally:
         conn.close()

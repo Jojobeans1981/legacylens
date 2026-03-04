@@ -1,5 +1,6 @@
 """LegacyLens — FastAPI application for RAG-powered BLAS codebase querying."""
 
+import hashlib
 import json
 import os
 import time
@@ -12,6 +13,38 @@ from fastapi.responses import HTMLResponse, StreamingResponse, JSONResponse
 load_dotenv()
 
 STATIC_DIR = os.path.join(os.path.dirname(__file__), "static")
+
+# ─── Query Cache ─────────────────────────────────────────────────────────────
+CACHE_MAX_SIZE = 500
+CACHE_TTL = 3600  # 1 hour
+_query_cache: dict[str, dict] = {}
+
+
+def _cache_key(mode: str, query: str) -> str:
+    return hashlib.sha256(f"{mode}:{query}".encode()).hexdigest()
+
+
+def _cache_get(mode: str, query: str) -> dict | None:
+    key = _cache_key(mode, query)
+    entry = _query_cache.get(key)
+    if entry and (time.time() - entry["timestamp"]) < CACHE_TTL:
+        return entry
+    if entry:
+        _query_cache.pop(key, None)
+    return None
+
+
+def _cache_put(mode: str, query: str, chunks: list, answer: str, meta: dict):
+    if len(_query_cache) >= CACHE_MAX_SIZE:
+        oldest_key = min(_query_cache, key=lambda k: _query_cache[k]["timestamp"])
+        del _query_cache[oldest_key]
+    key = _cache_key(mode, query)
+    _query_cache[key] = {
+        "chunks": chunks,
+        "answer": answer,
+        "meta": meta,
+        "timestamp": time.time(),
+    }
 
 
 def _dir_has_fortran(path: str) -> bool:
@@ -140,6 +173,15 @@ async def debug_env():
     }
 
 
+@app.get("/api/cache-stats")
+async def cache_stats():
+    return {
+        "size": len(_query_cache),
+        "max_size": CACHE_MAX_SIZE,
+        "ttl_seconds": CACHE_TTL,
+    }
+
+
 # ─── Ingestion ──────────────────────────────────────────────────────────────
 
 @app.post("/ingest")
@@ -167,6 +209,7 @@ async def ingest(request: Request):
     try:
         index = _get_index()
         result = run_ingestion(source_dirs=source_dirs, index=index)
+        _query_cache.clear()
         resp = result.model_dump()
         resp["source_dirs_used"] = source_dirs
         return resp
@@ -185,6 +228,23 @@ async def _handle_query(query_request, mode: str):
 
     start_time = time.time()
 
+    # ── Cache hit path ──
+    cached = _cache_get(mode, query_request.query)
+    if cached:
+        async def cached_stream():
+            yield f"data: {json.dumps({'type': 'retrieval', 'found': bool(cached['chunks']), 'chunks': cached['chunks']})}\n\n"
+            yield f"data: {json.dumps({'type': 'text', 'content': cached['answer']})}\n\n"
+            latency_ms = int((time.time() - start_time) * 1000)
+            done_meta = {**cached["meta"], "latency_ms": latency_ms, "cache_hit": True}
+            yield f"data: {json.dumps({'type': 'done', **done_meta})}\n\n"
+
+        return StreamingResponse(
+            cached_stream(),
+            media_type="text/event-stream",
+            headers={"Cache-Control": "no-cache", "Connection": "keep-alive", "X-Accel-Buffering": "no"},
+        )
+
+    # ── Cache miss path ──
     try:
         index = _get_index()
     except Exception as e:
@@ -199,11 +259,12 @@ async def _handle_query(query_request, mode: str):
 
     top_score = retrieval_result.chunks[0].score if retrieval_result.chunks else 0.0
     chunks_retrieved = len(retrieval_result.chunks)
+    chunks_data = [c.model_dump() for c in retrieval_result.chunks]
 
     retrieval_meta = {
         "type": "retrieval",
         "found": retrieval_result.found,
-        "chunks": [c.model_dump() for c in retrieval_result.chunks],
+        "chunks": chunks_data,
     }
 
     async def event_stream():
@@ -234,7 +295,14 @@ async def _handle_query(query_request, mode: str):
 
         latency_ms = int((time.time() - start_time) * 1000)
 
-        yield f"data: {json.dumps({'type': 'done', 'input_tokens': input_tokens, 'output_tokens': output_tokens, 'cost_usd': cost_usd, 'latency_ms': latency_ms})}\n\n"
+        yield f"data: {json.dumps({'type': 'done', 'input_tokens': input_tokens, 'output_tokens': output_tokens, 'cost_usd': cost_usd, 'latency_ms': latency_ms, 'cache_hit': False})}\n\n"
+
+        # Store in cache
+        _cache_put(mode, query_request.query, chunks_data, answer_text, {
+            "input_tokens": input_tokens,
+            "output_tokens": output_tokens,
+            "cost_usd": cost_usd,
+        })
 
         try:
             log_query(
