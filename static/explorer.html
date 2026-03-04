@@ -15,7 +15,22 @@
         body {
             font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif;
             background: var(--bg); color: var(--text); line-height: 1.6;
+            position: relative;
         }
+        body::before {
+            content: ''; position: fixed; top: 50%; left: 50%;
+            transform: translate(-50%, -50%);
+            width: 800px; height: 800px;
+            background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 800 800' fill='none' stroke='%2358a6ff' stroke-width='0.5' opacity='0.04'%3E%3Ccircle cx='400' cy='400' r='350'/%3E%3Ccircle cx='400' cy='400' r='280'/%3E%3Ccircle cx='400' cy='400' r='200'/%3E%3Ccircle cx='400' cy='400' r='120'/%3E%3Cline x1='400' y1='50' x2='400' y2='750'/%3E%3Cline x1='50' y1='400' x2='750' y2='400'/%3E%3Cline x1='153' y1='153' x2='647' y2='647'/%3E%3Cline x1='647' y1='153' x2='153' y2='647'/%3E%3Cpolygon points='400,50 697,575 103,575'/%3E%3Cpolygon points='400,750 103,225 697,225'/%3E%3Ccircle cx='400' cy='50' r='8'/%3E%3Ccircle cx='400' cy='750' r='8'/%3E%3Ccircle cx='50' cy='400' r='8'/%3E%3Ccircle cx='750' cy='400' r='8'/%3E%3Ccircle cx='153' cy='153' r='6'/%3E%3Ccircle cx='647' cy='153' r='6'/%3E%3Ccircle cx='153' cy='647' r='6'/%3E%3Ccircle cx='647' cy='647' r='6'/%3E%3Ccircle cx='400' cy='400' r='40'/%3E%3Ctext x='370' y='408' font-size='28' fill='%2358a6ff' stroke='none' font-family='serif' opacity='1'%3EG%3C/text%3E%3Cpath d='M400,120 L430,195 L510,195 L445,240 L465,320 L400,275 L335,320 L355,240 L290,195 L370,195Z'/%3E%3Cpath d='M400,680 L430,605 L510,605 L445,560 L465,480 L400,525 L335,480 L355,560 L290,605 L370,605Z'/%3E%3Cpath d='M120,400 L195,370 L195,290 L240,355 L320,335 L275,400 L320,465 L240,445 L195,510 L195,430Z'/%3E%3Cpath d='M680,400 L605,430 L605,510 L560,445 L480,465 L525,400 L480,335 L560,355 L605,290 L605,370Z'/%3E%3C/svg%3E");
+            background-size: contain; background-repeat: no-repeat;
+            pointer-events: none; z-index: 0;
+            animation: watermarkSpin 120s linear infinite;
+        }
+        @keyframes watermarkSpin {
+            from { transform: translate(-50%, -50%) rotate(0deg); }
+            to { transform: translate(-50%, -50%) rotate(360deg); }
+        }
+        .container { position: relative; z-index: 1; }
         .container { max-width: 1400px; margin: 0 auto; padding: 24px; }
         header {
             display: flex; align-items: center; justify-content: space-between;
