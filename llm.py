@@ -71,19 +71,29 @@ async def generate_answer(query: str, context: str,
     input_tokens = 0
     output_tokens = 0
 
-    async with client.messages.stream(
-        model=CLAUDE_MODEL,
-        max_tokens=LLM_MAX_TOKENS,
-        system=system_prompt,
-        messages=messages,
-    ) as stream:
-        async for text in stream.text_stream:
-            yield text
+    max_retries = 3
+    for attempt in range(max_retries):
+        try:
+            async with client.messages.stream(
+                model=CLAUDE_MODEL,
+                max_tokens=LLM_MAX_TOKENS,
+                system=system_prompt,
+                messages=messages,
+            ) as stream:
+                async for text in stream.text_stream:
+                    yield text
 
-        # Get final message for token counts
-        final_message = await stream.get_final_message()
-        input_tokens = final_message.usage.input_tokens
-        output_tokens = final_message.usage.output_tokens
+                # Get final message for token counts
+                final_message = await stream.get_final_message()
+                input_tokens = final_message.usage.input_tokens
+                output_tokens = final_message.usage.output_tokens
+            break  # Success, exit retry loop
+        except anthropic.APIStatusError as e:
+            if "overloaded" in str(e).lower() and attempt < max_retries - 1:
+                import asyncio
+                await asyncio.sleep(2 ** attempt)  # 1s, 2s backoff
+                continue
+            raise
 
     cost = (input_tokens * INPUT_COST_PER_TOKEN) + (output_tokens * OUTPUT_COST_PER_TOKEN)
 
