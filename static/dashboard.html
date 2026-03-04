@@ -561,7 +561,7 @@
                 document.getElementById('thumbsUpCount').textContent = data.thumbs_up || 0;
                 document.getElementById('thumbsDownCount').textContent = data.thumbs_down || 0;
                 document.getElementById('satisfaction').textContent =
-                    data.total > 0 ? data.satisfaction_pct + '%' : '\u2014';
+                    data.total_feedback > 0 ? data.satisfaction_pct + '%' : '\u2014';
 
                 const tbody = document.getElementById('feedbackLog');
                 const noFeedback = document.getElementById('noFeedback');
