@@ -662,11 +662,11 @@ def _compute_score_distribution(scores: list[float]) -> list[dict]:
         {"range": "0.2-0.4", "min": 0.2, "max": 0.4, "count": 0},
         {"range": "0.4-0.6", "min": 0.4, "max": 0.6, "count": 0},
         {"range": "0.6-0.8", "min": 0.6, "max": 0.8, "count": 0},
-        {"range": "0.8-1.0", "min": 0.8, "max": 1.0, "count": 0},
+        {"range": "0.8+", "min": 0.8, "max": float("inf"), "count": 0},
     ]
     for score in scores:
         for bucket in buckets:
-            if bucket["min"] <= score < bucket["max"] or (bucket["max"] == 1.0 and score == 1.0):
+            if bucket["min"] <= score < bucket["max"]:
                 bucket["count"] += 1
                 break
     return [{"range": b["range"], "count": b["count"]} for b in buckets]
