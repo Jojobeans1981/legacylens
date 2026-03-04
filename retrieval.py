@@ -220,7 +220,7 @@ def retrieve(query: str, index,
         return RetrievalResult(chunks=[], context="", found=False)
 
     # Assemble context
-    MAX_CONTEXT_PER_CHUNK = 800
+    MAX_CONTEXT_PER_CHUNK = 400
     context_parts = []
     for chunk in chunks:
         content = chunk.content[:MAX_CONTEXT_PER_CHUNK]

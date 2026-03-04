@@ -16,7 +16,7 @@ BM25_WEIGHT = float(os.getenv("BM25_WEIGHT", "0.3"))
 
 # ─── LLM ─────────────────────────────────────────────────────────────────────
 CLAUDE_MODEL = os.getenv("CLAUDE_MODEL", "claude-haiku-4-5-20251001")
-LLM_MAX_TOKENS = int(os.getenv("LLM_MAX_TOKENS", "1024"))
+LLM_MAX_TOKENS = int(os.getenv("LLM_MAX_TOKENS", "512"))
 INPUT_COST_PER_MTOK = float(os.getenv("INPUT_COST_PER_MTOK", "1.0"))
 OUTPUT_COST_PER_MTOK = float(os.getenv("OUTPUT_COST_PER_MTOK", "5.0"))
 
