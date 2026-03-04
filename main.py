@@ -1,4 +1,4 @@
-"""LegacyLens — FastAPI application for RAG-powered BLAS codebase querying."""
+"""GRIMOIRE — FastAPI application for RAG-powered BLAS codebase querying."""
 
 import collections
 import hashlib
@@ -147,11 +147,11 @@ async def lifespan(app: FastAPI):
     """Minimal startup — heavy init deferred to first request."""
     app.state.index = None
     app.state.index_connected = False
-    print("LegacyLens starting (lazy mode)...")
+    print("GRIMOIRE starting (lazy mode)...")
     yield
 
 
-app = FastAPI(title="LegacyLens", version="1.0.0", lifespan=lifespan)
+app = FastAPI(title="GRIMOIRE", version="2.0.0", lifespan=lifespan)
 
 
 # ─── HTML Routes ────────────────────────────────────────────────────────────

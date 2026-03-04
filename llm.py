@@ -1,4 +1,4 @@
-"""Claude API wrapper with streaming for LegacyLens."""
+"""Claude API wrapper with streaming for GRIMOIRE."""
 
 import os
 from typing import AsyncGenerator

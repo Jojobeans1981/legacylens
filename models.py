@@ -1,4 +1,4 @@
-"""Pydantic models for LegacyLens."""
+"""Pydantic models for GRIMOIRE."""
 
 from pydantic import BaseModel, Field, field_validator
 from typing import Optional

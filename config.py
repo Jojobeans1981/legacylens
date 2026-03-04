@@ -1,4 +1,4 @@
-"""Centralized configuration for LegacyLens. All values overridable via env vars."""
+"""Centralized configuration for GRIMOIRE. All values overridable via env vars."""
 
 import os
 
