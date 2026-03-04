@@ -3,7 +3,7 @@
 ## Phase 1: Define Your Constraints
 
 ### 1. Scale & Load Profile
-- **Codebase size:** 3,255 files, ~4,037 chunks across BLAS + LAPACK + ScaLAPACK (estimated 500K+ LOC)
+- **Codebase size:** 3,255 files, ~5,074 chunks across BLAS + LAPACK + ScaLAPACK (estimated 500K+ LOC)
 - **Expected query volume:** Low (hackathon demo), rate limited to 30 req/min per IP
 - **Ingestion model:** Batch — full re-ingestion via `/ingest` endpoint. No incremental updates.
 - **Latency requirements:** Target <3s end-to-end (embed + search + LLM stream). Cached queries near-instant.
@@ -40,7 +40,7 @@
 - **Managed vs self-hosted:** Managed — no time to operate Qdrant/Weaviate/pgvector
 - **Filtering:** Metadata filters on `routine_name` for exact routine queries (added to improve precision)
 - **Hybrid search:** BM25 keyword search (via `rank_bm25`) combined with vector search using Reciprocal Rank Fusion (RRF). Weights: 70% vector, 30% BM25. K=60 for RRF smoothing.
-- **Scaling:** Serverless auto-scales. 4,037 vectors is small — no scaling concerns.
+- **Scaling:** Serverless auto-scales. 5,074 vectors is small — no scaling concerns.
 
 ### 7. Embedding Strategy
 - **Model:** `multilingual-e5-large` via Pinecone Inference API
@@ -60,7 +60,7 @@
 - **Top-k:** 5 (increased from 3 to meet requirements)
 - **Score threshold:** 0.35 cosine similarity — chunks below this are dropped
 - **Re-ranking:** Heuristic re-ranking with 4 boost signals: exact routine name match (+0.15), query term density (+0.10), chunk type boost (+0.05 for subroutine/function), partial routine name match (+0.10). Zero-latency impact (pure string ops on 5-10 chunks).
-- **Context window management:** Cap 800 chars per chunk in LLM context. 5 chunks max.
+- **Context window management:** Cap 400 chars per chunk in LLM context. 5 chunks max. Max 512 output tokens.
 - **Query enhancement:** Metadata filter extracts routine names from queries (e.g., "What does DGEMM do?" filters to routine_name=DGEMM). Falls back to unfiltered vector search.
 
 ### 10. Answer Generation
@@ -139,9 +139,11 @@
 
 ## Key Numbers
 - 3,255 Fortran files ingested
-- 4,037 chunks indexed in Pinecone
+- 5,074 chunks indexed in Pinecone
 - 1024-dimensional embeddings (multilingual-e5-large)
+- 1,720+ nodes and 1,735+ edges in call graph
 - 5 query modes (Query, Explain, Docs, Patterns, Translate)
 - 3 libraries (BLAS, LAPACK, ScaLAPACK)
 - <$0.01 per query (Haiku 4.5)
-- Sub-3s target latency (first query), near-instant cached
+- ~2.6s avg latency, near-instant cached
+- 18 ground truth test queries, MRR 0.42

@@ -24,14 +24,14 @@ A production-ready RAG system that makes BLAS, LAPACK, and ScaLAPACK Fortran cod
 ### Pipeline Flow
 
 1. **Ingestion**: Fortran `.f`/`.f90` files → syntax-aware chunker → Pinecone Inference embeddings → Pinecone upsert → routine index + call graph
-2. **Query**: Natural language → embed → Pinecone cosine search → context assembly → Claude Haiku streaming response
+2. **Query**: Natural language → embed → hybrid search (vector + BM25 via RRF) → heuristic re-ranking → context assembly → Claude Haiku streaming response
 3. **Observability**: All queries, costs, and errors logged to SQLite → real-time dashboard with charts
 
 ## Stack
 
 | Layer | Technology |
 |-------|-----------|
-| Codebases | BLAS + LAPACK + ScaLAPACK (3,200+ files) |
+| Codebases | BLAS + LAPACK + ScaLAPACK (3,255 files, 5,000+ chunks) |
 | Vector DB | Pinecone (serverless, cosine similarity) |
 | Embeddings | Pinecone Inference API (`multilingual-e5-large`, 1024-dim) |
 | Answer LLM | Claude Haiku 4.5 via Anthropic API (streaming SSE) |
