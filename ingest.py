@@ -12,6 +12,51 @@ from embed import embed_texts
 from config import UPSERT_BATCH_SIZE, PINECONE_CLOUD, PINECONE_REGION, EMBED_DIMENSION
 
 
+def _is_comment_line(line: str) -> bool:
+    """Check if a line is a Fortran comment."""
+    if not line:
+        return False
+    return line[0] in ('C', 'c', '*', '!') or line.strip().startswith('!')
+
+
+def _max_nesting(lines: list[str]) -> int:
+    """Compute maximum IF/DO nesting depth in Fortran code."""
+    depth = 0
+    max_depth = 0
+    for line in lines:
+        stripped = line.strip().upper()
+        if _is_comment_line(line) or not stripped:
+            continue
+        # Openers: IF...THEN, DO, DO WHILE
+        if re.match(r'.*\bIF\b.*\bTHEN\b', stripped):
+            depth += 1
+        elif re.match(r'^DO\b', stripped):
+            depth += 1
+        # Closers: END IF, END DO, ENDDO, ENDIF
+        if re.match(r'^END\s*(IF|DO)\b', stripped) or stripped in ('ENDDO', 'ENDIF'):
+            depth = max(0, depth - 1)
+        max_depth = max(max_depth, depth)
+    return max_depth
+
+
+def _compute_complexity(chunk: Chunk) -> dict:
+    """Compute complexity metrics for a routine chunk."""
+    lines = chunk.content.split('\n')
+    loc = len([l for l in lines if l.strip() and not _is_comment_line(l)])
+    call_count = len(re.findall(r'^\s*CALL\s+\w+', chunk.content, re.IGNORECASE | re.MULTILINE))
+    var_count = len(re.findall(
+        r'^\s*(INTEGER|REAL|DOUBLE\s+PRECISION|COMPLEX(\*\d+)?|LOGICAL|CHARACTER)',
+        chunk.content, re.IGNORECASE | re.MULTILINE
+    ))
+    nesting_depth = _max_nesting(lines)
+    return {
+        "loc": loc,
+        "var_count": var_count,
+        "call_count": call_count,
+        "nesting_depth": nesting_depth,
+    }
+
+
 def _parse_call_graph(chunks: list[Chunk]) -> list[tuple]:
     """Extract CALL statements from Fortran chunks to build a call graph."""
     call_pattern = re.compile(r'^\s*CALL\s+(\w+)', re.IGNORECASE | re.MULTILINE)
@@ -152,9 +197,16 @@ def run_ingestion(source_dirs: list[str], index=None) -> IngestResult:
         print(f"  Upserted batch {batch_start // UPSERT_BATCH_SIZE + 1}/"
               f"{(len(all_chunks) + UPSERT_BATCH_SIZE - 1) // UPSERT_BATCH_SIZE}")
 
+    # Compute complexity metrics for each routine
+    print("Computing complexity metrics...")
+    routine_metrics = {}
+    for chunk in all_chunks:
+        if chunk.routine_name:
+            routine_metrics[chunk.routine_name] = _compute_complexity(chunk)
+
     # Populate routine index and call graph
     print("Building routine index and call graph...")
-    log_routines(all_chunks)
+    log_routines(all_chunks, metrics=routine_metrics)
     edges = _parse_call_graph(all_chunks)
     log_call_graph(edges)
     print(f"  {len([c for c in all_chunks if c.routine_name])} routines indexed, {len(edges)} call edges found")

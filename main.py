@@ -236,6 +236,43 @@ async def api_routines(library: str = None, search: str = None):
         return JSONResponse(content={"error": str(e)}, status_code=500)
 
 
+@app.get("/api/routine-detail")
+async def api_routine_detail(name: str = None):
+    from db import get_routine_detail
+    if not name or len(name) > MAX_ROUTINE_LENGTH:
+        raise HTTPException(status_code=422, detail="Invalid routine name")
+    detail = get_routine_detail(name)
+    if not detail:
+        raise HTTPException(status_code=404, detail=f"Routine '{name}' not found")
+    return JSONResponse(content=detail)
+
+
+@app.get("/api/compare")
+async def api_compare(routine1: str = None, routine2: str = None):
+    from db import get_routine_detail
+    if not routine1 or not routine2:
+        raise HTTPException(status_code=422, detail="Both routine1 and routine2 are required")
+    if len(routine1) > MAX_ROUTINE_LENGTH or len(routine2) > MAX_ROUTINE_LENGTH:
+        raise HTTPException(status_code=422, detail=f"Routine name too long (max {MAX_ROUTINE_LENGTH} chars)")
+    detail1 = get_routine_detail(routine1)
+    detail2 = get_routine_detail(routine2)
+    if not detail1:
+        raise HTTPException(status_code=404, detail=f"Routine '{routine1}' not found")
+    if not detail2:
+        raise HTTPException(status_code=404, detail=f"Routine '{routine2}' not found")
+    return JSONResponse(content={"routine1": detail1, "routine2": detail2})
+
+
+@app.get("/api/dead-code")
+async def api_dead_code():
+    from db import get_dead_code
+    try:
+        results = get_dead_code()
+        return JSONResponse(content=results)
+    except Exception as e:
+        return JSONResponse(content={"error": str(e)}, status_code=500)
+
+
 @app.get("/api/call-graph")
 async def api_call_graph(routine: str = None, depth: int = 2):
     from db import get_call_graph

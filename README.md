@@ -44,7 +44,10 @@ A production-ready RAG system that makes BLAS, LAPACK, and ScaLAPACK Fortran cod
 ## Features
 
 - **5 Query Modes**: Query, Explain, Docs, Patterns, Translate — all with streaming SSE
-- **Routine Explorer**: Searchable/filterable table of all indexed routines with library tabs
+- **Routine Explorer**: Searchable/filterable table with complexity metrics (LOC, variables, calls, nesting depth)
+- **Complexity Metrics**: Per-routine LOC, variable count, call count, and nesting depth computed during ingestion
+- **Compare Mode**: Side-by-side comparison of any two routines — metrics, callers, callees
+- **Dead Code Detection**: Identifies routines with no incoming calls across BLAS/LAPACK/ScaLAPACK
 - **Call Graph**: Interactive D3.js force-directed graph of routine call dependencies
 - **Translation View**: Side-by-side Fortran → Python/NumPy comparison
 - **Conversation Memory**: Multi-turn follow-up queries with context
@@ -90,7 +93,10 @@ Visit `http://localhost:8000` for the query UI and `/dashboard` for observabilit
 | POST | `/patterns` | Pattern analysis (SSE, rate limited) |
 | POST | `/translate` | Fortran→Python translation (SSE, rate limited) |
 | GET | `/api/stats` | Dashboard metrics JSON |
-| GET | `/api/routines` | Routine index with search/filter |
+| GET | `/api/routines` | Routine index with search/filter + complexity metrics |
+| GET | `/api/routine-detail` | Full routine detail with callers/callees |
+| GET | `/api/compare` | Side-by-side routine comparison |
+| GET | `/api/dead-code` | Unreferenced routines (dead code detection) |
 | GET | `/api/call-graph` | Call graph data with depth traversal |
 | GET | `/api/cache-stats` | Cache hit/miss statistics |
 | GET | `/debug/env` | Debug endpoint (API key required) |

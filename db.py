@@ -61,7 +61,11 @@ def _create_tables(conn: sqlite3.Connection):
             chunk_type TEXT,
             start_line INTEGER,
             end_line INTEGER,
-            library TEXT
+            library TEXT,
+            loc INTEGER DEFAULT 0,
+            var_count INTEGER DEFAULT 0,
+            call_count INTEGER DEFAULT 0,
+            nesting_depth INTEGER DEFAULT 0
         );
 
         CREATE TABLE IF NOT EXISTS call_graph (
@@ -72,6 +76,18 @@ def _create_tables(conn: sqlite3.Connection):
             line_number INTEGER
         );
     """)
+    conn.commit()
+    # Migrate existing routine_index tables missing new columns
+    _migrate_routine_index(conn)
+
+
+def _migrate_routine_index(conn: sqlite3.Connection):
+    """Add complexity columns if they don't exist (migration for existing DBs)."""
+    cursor = conn.execute("PRAGMA table_info(routine_index)")
+    existing_cols = {row[1] for row in cursor.fetchall()}
+    for col in ("loc", "var_count", "call_count", "nesting_depth"):
+        if col not in existing_cols:
+            conn.execute(f"ALTER TABLE routine_index ADD COLUMN {col} INTEGER DEFAULT 0")
     conn.commit()
 
 
@@ -234,8 +250,14 @@ def _detect_library(file_path: str) -> str:
     return "BLAS"
 
 
-def log_routines(chunks: list):
-    """Populate routine_index from ingested chunks."""
+def log_routines(chunks: list, metrics: dict = None):
+    """Populate routine_index from ingested chunks.
+
+    Args:
+        chunks: List of Chunk objects or dicts
+        metrics: Optional dict mapping routine_name -> {loc, var_count, call_count, nesting_depth}
+    """
+    metrics = metrics or {}
     conn = get_connection()
     try:
         conn.execute("DELETE FROM routine_index")
@@ -254,9 +276,15 @@ def log_routines(chunks: list):
                 eline = c.end_line
             if not name:
                 continue
+            m = metrics.get(name, {})
             conn.execute(
-                "INSERT INTO routine_index (routine_name, file_path, chunk_type, start_line, end_line, library) VALUES (?, ?, ?, ?, ?, ?)",
-                (name, fpath, ctype, sline, eline, _detect_library(fpath))
+                """INSERT INTO routine_index
+                   (routine_name, file_path, chunk_type, start_line, end_line, library,
+                    loc, var_count, call_count, nesting_depth)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                (name, fpath, ctype, sline, eline, _detect_library(fpath),
+                 m.get("loc", 0), m.get("var_count", 0),
+                 m.get("call_count", 0), m.get("nesting_depth", 0))
             )
         conn.commit()
     finally:
@@ -267,7 +295,7 @@ def get_routines(library: str = None, search: str = None) -> list[dict]:
     """Get routines from the index, optionally filtered."""
     conn = get_connection()
     try:
-        query = "SELECT routine_name, file_path, chunk_type, start_line, end_line, library FROM routine_index"
+        query = "SELECT routine_name, file_path, chunk_type, start_line, end_line, library, loc, var_count, call_count, nesting_depth FROM routine_index"
         params = []
         conditions = []
         if library:
@@ -367,6 +395,55 @@ def get_call_graph(routine: str = None, depth: int = 2) -> dict:
             })
 
         return {"nodes": node_list, "edges": unique_edges}
+    finally:
+        conn.close()
+
+
+def get_routine_detail(name: str) -> dict | None:
+    """Get full detail for a single routine including callers and callees."""
+    conn = get_connection()
+    try:
+        row = conn.execute(
+            """SELECT routine_name, file_path, chunk_type, start_line, end_line, library,
+                      loc, var_count, call_count, nesting_depth
+               FROM routine_index WHERE UPPER(routine_name) = ? LIMIT 1""",
+            (name.upper(),)
+        ).fetchone()
+        if not row:
+            return None
+        detail = dict(row)
+        # Incoming calls (who calls this routine)
+        callers = conn.execute(
+            "SELECT DISTINCT caller, file_path, line_number FROM call_graph WHERE UPPER(callee) = ?",
+            (name.upper(),)
+        ).fetchall()
+        detail["callers"] = [{"name": r[0], "file_path": r[1], "line": r[2]} for r in callers]
+        # Outgoing calls (what this routine calls)
+        callees = conn.execute(
+            "SELECT DISTINCT callee, file_path, line_number FROM call_graph WHERE UPPER(caller) = ?",
+            (name.upper(),)
+        ).fetchall()
+        detail["callees"] = [{"name": r[0], "file_path": r[1], "line": r[2]} for r in callees]
+        return detail
+    finally:
+        conn.close()
+
+
+def get_dead_code() -> list[dict]:
+    """Find routines with no incoming calls (potential dead code)."""
+    conn = get_connection()
+    try:
+        rows = conn.execute(
+            """SELECT r.routine_name, r.file_path, r.library, r.loc, r.chunk_type,
+                      r.var_count, r.call_count, r.nesting_depth
+               FROM routine_index r
+               WHERE UPPER(r.routine_name) NOT IN (
+                   SELECT DISTINCT UPPER(callee) FROM call_graph
+               )
+               AND r.chunk_type != 'program'
+               ORDER BY r.library, r.routine_name"""
+        ).fetchall()
+        return [dict(r) for r in rows]
     finally:
         conn.close()
 
