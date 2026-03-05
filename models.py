@@ -66,6 +66,7 @@ class RetrievalResult(BaseModel):
     chunks: list[RetrievalChunk]
     context: str
     found: bool
+    strategy: str = "hybrid"  # "vector" | "keyword" | "hybrid"
 
 
 class StatsResponse(BaseModel):

@@ -370,6 +370,7 @@ async def _handle_query(query_request, mode: str):
         "type": "retrieval",
         "found": retrieval_result.found,
         "chunks": chunks_data,
+        "strategy": retrieval_result.strategy,
     }
 
     async def event_stream():

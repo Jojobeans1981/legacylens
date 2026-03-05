@@ -1,8 +1,9 @@
-"""RAG retrieval pipeline: hybrid search (vector + BM25) with heuristic re-ranking."""
+"""RAG retrieval pipeline: agentic routing → vector / keyword / hybrid search with re-ranking."""
 
 import json
 import re
 import time as _time
+from typing import Literal
 
 from rank_bm25 import BM25Okapi
 
@@ -12,6 +13,35 @@ from config import SCORE_THRESHOLD, DEFAULT_TOP_K, VECTOR_WEIGHT, BM25_WEIGHT
 
 # Pattern to detect routine names in queries (uppercase Fortran identifiers)
 _ROUTINE_PATTERN = re.compile(r'\b([A-Z][A-Z0-9]{2,})\b')
+
+# Conceptual signal words → prefer vector search
+_CONCEPTUAL_SIGNALS = {
+    'how', 'why', 'explain', 'explanation', 'concept', 'algorithm',
+    'overview', 'purpose', 'difference', 'between', 'compare',
+    'understand', 'describe', 'when', 'structure', 'design',
+}
+
+SearchStrategy = Literal["vector", "keyword", "hybrid"]
+
+
+def _classify_query(query: str) -> SearchStrategy:
+    """Route query to the best search strategy.
+
+    - keyword: specific routine name + short/direct lookup query
+    - vector:  conceptual question with no specific routine
+    - hybrid:  everything else (ambiguous, mixed)
+    """
+    routine = _extract_routine_name(query)
+    words = query.lower().split()
+    has_conceptual = bool(_CONCEPTUAL_SIGNALS & set(words))
+
+    if routine and len(words) <= 8 and not has_conceptual:
+        return "keyword"
+
+    if not routine and has_conceptual:
+        return "vector"
+
+    return "hybrid"
 
 # Module-level BM25 index (lazily loaded)
 _bm25_index = None
@@ -136,10 +166,8 @@ def _rerank_chunks(chunks: list[RetrievalChunk], query: str) -> list[RetrievalCh
     return reranked
 
 
-def retrieve(query: str, index,
-             top_k: int = DEFAULT_TOP_K) -> RetrievalResult:
-    """Hybrid retrieval: vector search + BM25 keyword search, merged with RRF, then re-ranked."""
-    # --- Vector search ---
+def _vector_search(query: str, index, top_k: int) -> dict:
+    """Run vector search, return results keyed by file_path:start_line."""
     query_vector = list(embed_query(query))
     routine_name = _extract_routine_name(query)
     filter_dict = {"routine_name": {"$eq": routine_name}} if routine_name else None
@@ -153,7 +181,6 @@ def retrieve(query: str, index,
             vector=query_vector, top_k=top_k + 5, include_metadata=True,
         )
 
-    # Build vector results keyed by file_path:start_line
     vector_results = {}
     for rank, match in enumerate(results.get("matches", [])):
         if match["score"] < SCORE_THRESHOLD:
@@ -170,42 +197,86 @@ def retrieve(query: str, index,
             "vector_score": match["score"],
             "vector_rank": rank,
         }
+    return vector_results
 
-    # --- BM25 keyword search ---
-    bm25_results = {}
-    for rank, item in enumerate(_bm25_search(query, top_k=top_k + 5)):
-        key = f"{item['file_path']}:{item['start_line']}"
-        bm25_results[key] = {**item, "bm25_rank": rank}
 
-    # --- Reciprocal Rank Fusion ---
-    K = 60
-    all_keys = set(vector_results.keys()) | set(bm25_results.keys())
-    fused = []
-    for key in all_keys:
-        rrf_score = 0.0
-        vec = vector_results.get(key)
-        bm25 = bm25_results.get(key)
+def retrieve(query: str, index,
+             top_k: int = DEFAULT_TOP_K,
+             strategy: SearchStrategy | str = "auto") -> RetrievalResult:
+    """Agentic retrieval: route query to vector / keyword / hybrid search, then re-rank.
 
-        if vec:
-            rrf_score += VECTOR_WEIGHT / (K + vec["vector_rank"])
-        if bm25:
-            rrf_score += BM25_WEIGHT / (K + bm25["bm25_rank"])
+    strategy="auto" (default) calls _classify_query() to decide per-query.
+    """
+    if strategy == "auto":
+        strategy = _classify_query(query)
 
-        source = vec or bm25
-        fused.append({
-            "content": source["content"],
-            "file_path": source["file_path"],
-            "start_line": source["start_line"],
-            "end_line": source["end_line"],
-            "chunk_type": source["chunk_type"],
-            "routine_name": source["routine_name"],
-            "score": round(vec["vector_score"] if vec else bm25.get("bm25_score", 0.0), 4),
-        })
+    # --- Vector search (skipped for keyword-only) ---
+    vector_results: dict = {}
+    if strategy in ("vector", "hybrid"):
+        vector_results = _vector_search(query, index, top_k)
 
-    fused.sort(key=lambda x: x["score"], reverse=True)
-    fused = fused[:top_k]
+    # --- BM25 keyword search (skipped for vector-only) ---
+    bm25_results: dict = {}
+    if strategy in ("keyword", "hybrid"):
+        for rank, item in enumerate(_bm25_search(query, top_k=top_k + 5)):
+            key = f"{item['file_path']}:{item['start_line']}"
+            bm25_results[key] = {**item, "bm25_rank": rank}
 
-    # Convert to RetrievalChunk list
+    # --- Merge results ---
+    if strategy == "vector":
+        fused = [
+            {
+                "content": v["content"],
+                "file_path": v["file_path"],
+                "start_line": v["start_line"],
+                "end_line": v["end_line"],
+                "chunk_type": v["chunk_type"],
+                "routine_name": v["routine_name"],
+                "score": round(v["vector_score"], 4),
+            }
+            for v in sorted(vector_results.values(), key=lambda x: x["vector_score"], reverse=True)
+        ][:top_k]
+
+    elif strategy == "keyword":
+        fused = [
+            {
+                "content": b["content"],
+                "file_path": b["file_path"],
+                "start_line": b["start_line"],
+                "end_line": b["end_line"],
+                "chunk_type": b["chunk_type"],
+                "routine_name": b["routine_name"],
+                "score": round(b.get("bm25_score", 0.0), 4),
+            }
+            for b in sorted(bm25_results.values(), key=lambda x: x.get("bm25_score", 0.0), reverse=True)
+        ][:top_k]
+
+    else:  # hybrid — Reciprocal Rank Fusion
+        K = 60
+        all_keys = set(vector_results.keys()) | set(bm25_results.keys())
+        fused = []
+        for key in all_keys:
+            vec = vector_results.get(key)
+            bm25 = bm25_results.get(key)
+            rrf_score = 0.0
+            if vec:
+                rrf_score += VECTOR_WEIGHT / (K + vec["vector_rank"])
+            if bm25:
+                rrf_score += BM25_WEIGHT / (K + bm25["bm25_rank"])
+            source = vec or bm25
+            fused.append({
+                "content": source["content"],
+                "file_path": source["file_path"],
+                "start_line": source["start_line"],
+                "end_line": source["end_line"],
+                "chunk_type": source["chunk_type"],
+                "routine_name": source["routine_name"],
+                "score": round(vec["vector_score"] if vec else bm25.get("bm25_score", 0.0), 4),
+            })
+        fused.sort(key=lambda x: x["score"], reverse=True)
+        fused = fused[:top_k]
+
+    # Convert to RetrievalChunk list and re-rank
     chunks = [RetrievalChunk(
         content=r["content"], file_path=r["file_path"],
         start_line=r["start_line"], end_line=r["end_line"],
@@ -213,11 +284,10 @@ def retrieve(query: str, index,
         score=r["score"],
     ) for r in fused]
 
-    # Re-rank using heuristics
     chunks = _rerank_chunks(chunks, query)
 
     if not chunks:
-        return RetrievalResult(chunks=[], context="", found=False)
+        return RetrievalResult(chunks=[], context="", found=False, strategy=strategy)
 
     # Assemble context
     MAX_CONTEXT_PER_CHUNK = 400
@@ -230,7 +300,7 @@ def retrieve(query: str, index,
         )
     context = "\n\n".join(context_parts)
 
-    return RetrievalResult(chunks=chunks, context=context, found=True)
+    return RetrievalResult(chunks=chunks, context=context, found=True, strategy=strategy)
 
 
 def run_evaluation(index, top_k: int = DEFAULT_TOP_K) -> dict:
