@@ -306,6 +306,11 @@
             vertical-align: text-bottom;
             animation: blink-cursor 0.8s step-end infinite;
         }
+        .routine-ref {
+            color: var(--accent); text-decoration: none;
+            border-bottom: 1px dotted var(--accent);
+        }
+        .routine-ref:hover { border-bottom-style: solid; }
         @keyframes blink-cursor { 50% { opacity: 0; } }
 
         .answer-meta {
@@ -726,6 +731,46 @@
             catch (e) { return text; }
         }
 
+        function linkifyRoutines(html) {
+            const STOPWORDS = new Set([
+                'THE','AND','FOR','HOW','WHAT','DOES','WHY','ALL','ARE','NOT','CAN','HAS',
+                'THIS','THAT','WITH','FROM','WILL','BEEN','HAVE','EACH','ALSO','ONLY','USED',
+                'NOTE','WHEN','THEN','ELSE','THAN','INTO','SOME','SUCH','MUST','BOTH'
+            ]);
+            const ROUTINE_RE = /\b([A-Z][A-Z0-9]{2,})\b/g;
+            const parts = [];
+            let inCode = false;
+            let inTag = false;
+            let i = 0;
+            while (i < html.length) {
+                if (!inTag && html.slice(i, i + 5).toLowerCase() === '<code') {
+                    const closeIdx = html.indexOf('</code>', i);
+                    if (closeIdx !== -1) {
+                        parts.push(html.slice(i, closeIdx + 7));
+                        i = closeIdx + 7;
+                        continue;
+                    }
+                }
+                if (html[i] === '<') {
+                    const closeIdx = html.indexOf('>', i);
+                    if (closeIdx !== -1) {
+                        parts.push(html.slice(i, closeIdx + 1));
+                        i = closeIdx + 1;
+                        continue;
+                    }
+                }
+                let nextTag = html.indexOf('<', i);
+                if (nextTag === -1) nextTag = html.length;
+                const textChunk = html.slice(i, nextTag);
+                parts.push(textChunk.replace(ROUTINE_RE, (match) => {
+                    if (STOPWORDS.has(match)) return match;
+                    return `<a href="/?query=Explain ${encodeURIComponent(match)}&mode=explain" class="routine-ref" title="Look up ${match}">${match}</a>`;
+                }));
+                i = nextTag;
+            }
+            return parts.join('');
+        }
+
         async function submitQuery() {
             const query = document.getElementById('queryInput').value.trim();
             if (!query) return;
@@ -807,7 +852,7 @@
                         } else if (data.type === 'text') {
                             document.getElementById('loading').classList.remove('active');
                             rawAnswer += data.content;
-                            answerEl.innerHTML = renderMarkdown(rawAnswer) + '<span class="streaming-cursor"></span>';
+                            answerEl.innerHTML = linkifyRoutines(renderMarkdown(rawAnswer)) + '<span class="streaming-cursor"></span>';
                             answerEl.querySelectorAll('pre code').forEach(block => {
                                 if (!block.dataset.highlighted) {
                                     hljs.highlightElement(block);
@@ -816,7 +861,7 @@
                             });
                         } else if (data.type === 'done') {
                             isStreaming = false;
-                            answerEl.innerHTML = renderMarkdown(rawAnswer);
+                            answerEl.innerHTML = linkifyRoutines(renderMarkdown(rawAnswer));
                             answerEl.querySelectorAll('pre code').forEach(block => hljs.highlightElement(block));
 
                             if (data.cache_hit) {
