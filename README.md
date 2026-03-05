@@ -88,6 +88,7 @@ Visit `http://localhost:8000` for the query UI and `/dashboard` for observabilit
 | GET | `/dashboard` | Observability dashboard with charts |
 | GET | `/explorer` | Searchable routine browser |
 | GET | `/callgraph` | Interactive call graph visualization |
+| GET | `/source` | Source code viewer |
 | GET | `/health` | Health check |
 | GET | `/docs` | Auto-generated API documentation |
 | POST | `/ingest` | Run ingestion pipeline (API key required) |
@@ -99,6 +100,7 @@ Visit `http://localhost:8000` for the query UI and `/dashboard` for observabilit
 | GET | `/api/stats` | Dashboard metrics JSON |
 | GET | `/api/recent-queries` | Recent query log (last 20) |
 | GET | `/api/errors` | Recent error log (last 10) |
+| GET | `/api/source` | Full routine source code JSON |
 | GET | `/api/routines` | Routine index with search/filter + complexity metrics |
 | GET | `/api/routine-detail` | Full routine detail with callers/callees |
 | GET | `/api/compare` | Side-by-side routine comparison |

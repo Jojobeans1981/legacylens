@@ -31,3 +31,9 @@ async def serve_explorer():
 async def serve_callgraph():
     with open(os.path.join(STATIC_DIR, "callgraph.html"), "r") as f:
         return HTMLResponse(content=f.read())
+
+
+@router.get("/source", response_class=HTMLResponse)
+async def serve_source():
+    with open(os.path.join(STATIC_DIR, "source.html"), "r") as f:
+        return HTMLResponse(content=f.read())

@@ -1,0 +1,237 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>GRIMOIRE — Source Viewer</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github-dark.min.css">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/fortran.min.js"></script>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        :root {
+            --bg: #0d1117; --surface: #161b22; --border: #30363d;
+            --text: #e6edf3; --text-dim: #8b949e; --accent: #58a6ff;
+            --accent-dim: #1f6feb; --green: #3fb950; --orange: #d29922;
+            --red: #f85149; --purple: #bc8cff;
+        }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif;
+            background: var(--bg); color: var(--text); line-height: 1.6;
+            position: relative;
+        }
+        body::before {
+            content: ''; position: fixed; top: 50%; left: 50%;
+            transform: translate(-50%, -50%);
+            width: 800px; height: 800px;
+            background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 800 800' fill='none' stroke='%2358a6ff' stroke-width='0.8' opacity='0.11'%3E%3Ccircle cx='400' cy='400' r='380'/%3E%3Ccircle cx='400' cy='400' r='370' stroke-dasharray='8 12'/%3E%3Ccircle cx='400' cy='400' r='300'/%3E%3Ccircle cx='400' cy='400' r='290' stroke-dasharray='4 8'/%3E%3Ccircle cx='400' cy='400' r='220'/%3E%3Ccircle cx='400' cy='400' r='150'/%3E%3Ccircle cx='400' cy='400' r='80'/%3E%3Cline x1='400' y1='20' x2='400' y2='780'/%3E%3Cline x1='20' y1='400' x2='780' y2='400'/%3E%3Cline x1='132' y1='132' x2='668' y2='668'/%3E%3Cline x1='668' y1='132' x2='132' y2='668'/%3E%3Cpolygon points='400,20 730,600 70,600' stroke-width='1'/%3E%3Cpolygon points='400,780 70,200 730,200' stroke-width='1'/%3E%3Cpolygon points='400,100 660,550 140,550' stroke-width='0.5' stroke-dasharray='6 4'/%3E%3Cpolygon points='400,700 140,250 660,250' stroke-width='0.5' stroke-dasharray='6 4'/%3E%3Ccircle cx='400' cy='20' r='10' fill='%2358a6ff' fill-opacity='0.3'/%3E%3Ccircle cx='400' cy='780' r='10' fill='%2358a6ff' fill-opacity='0.3'/%3E%3Ccircle cx='20' cy='400' r='10' fill='%2358a6ff' fill-opacity='0.3'/%3E%3Ccircle cx='780' cy='400' r='10' fill='%2358a6ff' fill-opacity='0.3'/%3E%3Ccircle cx='132' cy='132' r='7' fill='%23bc8cff' fill-opacity='0.3'/%3E%3Ccircle cx='668' cy='132' r='7' fill='%23bc8cff' fill-opacity='0.3'/%3E%3Ccircle cx='132' cy='668' r='7' fill='%23bc8cff' fill-opacity='0.3'/%3E%3Ccircle cx='668' cy='668' r='7' fill='%23bc8cff' fill-opacity='0.3'/%3E%3Cpath d='M400,120 L430,195 L510,195 L445,240 L465,320 L400,275 L335,320 L355,240 L290,195 L370,195Z' stroke-width='0.8'/%3E%3Cpath d='M400,680 L430,605 L510,605 L445,560 L465,480 L400,525 L335,480 L355,560 L290,605 L370,605Z' stroke-width='0.8'/%3E%3Cpath d='M120,400 L195,370 L195,290 L240,355 L320,335 L275,400 L320,465 L240,445 L195,510 L195,430Z' stroke-width='0.8'/%3E%3Cpath d='M680,400 L605,430 L605,510 L560,445 L480,465 L525,400 L480,335 L560,355 L605,290 L605,370Z' stroke-width='0.8'/%3E%3Ccircle cx='400' cy='400' r='60' stroke='%23d4a017' stroke-width='1.5'/%3E%3Ccircle cx='400' cy='400' r='55' stroke='%23d4a017' stroke-width='0.5' stroke-dasharray='3 3'/%3E%3Ctext x='400' y='425' font-size='72' fill='%23d4a017' fill-opacity='0.6' stroke='%23d4a017' stroke-width='0.5' font-family='Georgia,Times,serif' font-weight='bold' text-anchor='middle' font-style='italic'%3EG%3C/text%3E%3C/svg%3E");
+            background-size: contain; background-repeat: no-repeat;
+            pointer-events: none; z-index: 0;
+            animation: watermarkSpin 120s linear infinite;
+        }
+        @keyframes watermarkSpin {
+            from { transform: translate(-50%, -50%) rotate(0deg); }
+            to { transform: translate(-50%, -50%) rotate(360deg); }
+        }
+        .container { position: relative; z-index: 1; max-width: 1200px; margin: 0 auto; padding: 24px; }
+        header {
+            display: flex; align-items: center; justify-content: space-between;
+            padding: 16px 0; border-bottom: 1px solid var(--border); margin-bottom: 24px;
+            position: relative;
+        }
+        header h1 { font-size: 24px; font-weight: 600; }
+        header h1 span { color: var(--accent); }
+        .header-links a {
+            color: var(--text-dim); text-decoration: none; margin-left: 16px;
+            font-size: 14px; transition: color 0.2s, transform 0.2s; display: inline-block;
+        }
+        .header-links a:hover { color: var(--accent); transform: translateY(-1px); }
+        header::after {
+            content: ''; display: block; position: absolute; bottom: -1px; left: 0; right: 0;
+            height: 2px;
+            background: linear-gradient(90deg, var(--accent), var(--purple), var(--green), var(--accent));
+            background-size: 300% 100%;
+            animation: gradientSlide 4s ease infinite;
+        }
+        @keyframes gradientSlide {
+            0% { background-position: 0% 50%; }
+            50% { background-position: 100% 50%; }
+            100% { background-position: 0% 50%; }
+        }
+        @keyframes fadeInUp {
+            from { opacity: 0; transform: translateY(20px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        .routine-header { margin-bottom: 20px; animation: fadeInUp 0.4s ease-out; }
+        .routine-header h2 {
+            font-family: monospace; font-size: 28px; color: var(--accent); margin-bottom: 4px;
+        }
+        .routine-meta {
+            display: flex; gap: 12px; align-items: center; flex-wrap: wrap;
+            font-size: 13px; color: var(--text-dim);
+        }
+        .routine-meta .file-path { font-family: monospace; }
+        .lib-badge {
+            font-size: 10px; padding: 2px 6px; border-radius: 10px;
+            font-weight: 700; text-transform: uppercase;
+        }
+        .lib-blas { background: rgba(88,166,255,0.15); color: var(--accent); }
+        .lib-lapack { background: rgba(63,185,80,0.15); color: var(--green); }
+        .lib-scalapack { background: rgba(188,140,255,0.15); color: var(--purple); }
+        .type-badge {
+            font-size: 11px; padding: 2px 8px; border-radius: 10px;
+            background: rgba(255,255,255,0.05); color: var(--text-dim);
+        }
+
+        .action-row {
+            display: flex; gap: 8px; margin-bottom: 20px; flex-wrap: wrap;
+            animation: fadeInUp 0.4s ease-out 0.1s both;
+        }
+        .action-link {
+            padding: 6px 14px; border: 1px solid var(--border); background: var(--surface);
+            color: var(--text-dim); border-radius: 6px; text-decoration: none;
+            font-size: 13px; transition: all 0.2s;
+        }
+        .action-link:hover { color: var(--accent); border-color: var(--accent); transform: translateY(-1px); }
+
+        .source-section {
+            background: var(--surface); border: 1px solid var(--border);
+            border-radius: 12px; overflow: hidden;
+            animation: fadeInUp 0.5s ease-out 0.2s both;
+        }
+        .source-table {
+            width: 100%; border-collapse: collapse; font-size: 13px;
+            font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace;
+        }
+        .source-table td {
+            padding: 0 12px; vertical-align: top; line-height: 1.5;
+        }
+        .source-table .line-num {
+            width: 1%; min-width: 50px; text-align: right;
+            color: var(--text-dim); user-select: none; opacity: 0.5;
+            padding-right: 16px; border-right: 1px solid var(--border);
+        }
+        .source-table .line-code {
+            white-space: pre; overflow-x: auto; padding-left: 16px;
+        }
+        .source-table tr:hover td { background: rgba(255,255,255,0.02); }
+        .source-table pre { margin: 0; padding: 0; background: none; }
+        .source-table code { background: none; padding: 0; font-size: 13px; }
+
+        .not-found {
+            text-align: center; padding: 60px 20px; color: var(--text-dim);
+            animation: fadeInUp 0.4s ease-out;
+        }
+        .not-found h2 { font-size: 20px; color: var(--text); margin-bottom: 8px; }
+        .not-found a { color: var(--accent); text-decoration: none; }
+        .not-found a:hover { text-decoration: underline; }
+
+        .loading { text-align: center; padding: 60px; color: var(--text-dim); }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>GRIM<span>OIRE</span> Source</h1>
+            <div class="header-links">
+                <a href="/">Query</a>
+                <a href="/explorer">Explorer</a>
+                <a href="/callgraph">Call Graph</a>
+                <a href="/dashboard">Dashboard</a>
+                <a href="/docs">API Docs</a>
+            </div>
+        </header>
+
+        <div id="content">
+            <div class="loading">Loading...</div>
+        </div>
+    </div>
+
+    <script>
+        function escapeHtml(text) {
+            const div = document.createElement('div');
+            div.textContent = text || '';
+            return div.innerHTML;
+        }
+
+        function detectLibrary(filePath) {
+            const lower = (filePath || '').toLowerCase();
+            if (lower.includes('scalapack') || lower.includes('pblas') || lower.includes('blacs')) return 'scalapack';
+            if (lower.includes('lapack')) return 'lapack';
+            return 'blas';
+        }
+
+        async function loadSource() {
+            const params = new URLSearchParams(window.location.search);
+            const name = params.get('name');
+            const content = document.getElementById('content');
+
+            if (!name) {
+                content.innerHTML = `<div class="not-found">
+                    <h2>No routine specified</h2>
+                    <p>Go to the <a href="/explorer">Explorer</a> to browse routines.</p>
+                </div>`;
+                return;
+            }
+
+            document.title = `GRIMOIRE — ${escapeHtml(name)}`;
+
+            try {
+                const resp = await fetch(`/api/source?name=${encodeURIComponent(name)}`);
+                if (!resp.ok) {
+                    content.innerHTML = `<div class="not-found">
+                        <h2>Routine '${escapeHtml(name)}' not found</h2>
+                        <p>It may not have been ingested yet. Try <a href="/explorer">browsing available routines</a>.</p>
+                    </div>`;
+                    return;
+                }
+
+                const data = await resp.json();
+                const lib = detectLibrary(data.file_path);
+                const libClass = 'lib-' + lib;
+                const libLabel = lib === 'scalapack' ? 'ScaLAPACK' : lib.toUpperCase();
+                const escapedName = escapeHtml(data.routine_name);
+                const escapedFile = escapeHtml(data.file_path);
+                const escapedType = escapeHtml(data.chunk_type);
+
+                const lines = (data.content || '').split('\n');
+                const startLine = data.start_line || 1;
+                const lineRows = lines.map((line, i) =>
+                    `<tr><td class="line-num">${startLine + i}</td><td class="line-code">${escapeHtml(line)}</td></tr>`
+                ).join('');
+
+                content.innerHTML = `
+                    <div class="routine-header">
+                        <h2>${escapedName}</h2>
+                        <div class="routine-meta">
+                            <span class="lib-badge ${libClass}">${libLabel}</span>
+                            <span class="type-badge">${escapedType}</span>
+                            <span class="file-path">${escapedFile}:${data.start_line}-${data.end_line}</span>
+                        </div>
+                    </div>
+                    <div class="action-row">
+                        <a class="action-link" href="/?query=${encodeURIComponent('Explain ' + data.routine_name)}&mode=explain">Explain this routine</a>
+                        <a class="action-link" href="/explorer">View in Explorer</a>
+                        <a class="action-link" href="/callgraph?routine=${encodeURIComponent(data.routine_name)}">View Call Graph</a>
+                    </div>
+                    <div class="source-section">
+                        <table class="source-table"><tbody>${lineRows}</tbody></table>
+                    </div>`;
+
+                // Apply syntax highlighting to code cells
+                document.querySelectorAll('.line-code').forEach(cell => {
+                    hljs.highlightElement(cell);
+                });
+            } catch (e) {
+                content.innerHTML = `<div class="not-found">
+                    <h2>Failed to load source</h2>
+                    <p>${escapeHtml(e.message)}</p>
+                </div>`;
+            }
+        }
+
+        loadSource();
+    </script>
+</body>
+</html>

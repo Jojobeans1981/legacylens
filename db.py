@@ -584,6 +584,20 @@ def log_chunk_content(chunks: list):
         conn.close()
 
 
+def get_chunk_content(routine_name: str) -> dict | None:
+    """Get full chunk content for a routine by name."""
+    conn = get_connection()
+    try:
+        row = conn.execute(
+            """SELECT routine_name, file_path, chunk_type, start_line, end_line, content
+               FROM chunk_content WHERE UPPER(routine_name) = ? LIMIT 1""",
+            (routine_name.upper(),)
+        ).fetchone()
+        return dict(row) if row else None
+    finally:
+        conn.close()
+
+
 def seed_ground_truth():
     """Seed the ground truth table with test queries. Idempotent."""
     conn = get_connection()

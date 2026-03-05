@@ -521,7 +521,7 @@
                     <td><input type="checkbox" data-routine="${escapeHtml(r.routine_name)}" ${checked}></td>
                     <td><a class="routine-link" href="/?query=Explain ${encodeURIComponent(r.routine_name)}&mode=explain">${escapeHtml(r.routine_name)}</a>${deadTag}</td>
                     <td><span class="type-badge">${escapeHtml(r.chunk_type)}</span></td>
-                    <td class="file-path">${escapeHtml(r.file_path)}</td>
+                    <td class="file-path"><a href="/source?name=${encodeURIComponent(r.routine_name)}" style="color:var(--text-dim);text-decoration:none;" onmouseover="this.style.color='var(--accent)'" onmouseout="this.style.color='var(--text-dim)'">${escapeHtml(r.file_path)}</a></td>
                     <td class="metric">${r.loc || 0}</td>
                     <td class="metric">${r.var_count || 0}</td>
                     <td class="metric">${r.call_count || 0}</td>

@@ -956,7 +956,7 @@
                 card.className = 'chunk-card';
                 card.innerHTML = `
                     <div class="chunk-header">
-                        <span class="chunk-file">${escapeHtml(chunk.file_path)}:${chunk.start_line}-${chunk.end_line}</span>
+                        <a class="chunk-file" href="/source?name=${encodeURIComponent(chunk.routine_name || '')}" style="text-decoration:none;color:inherit;" onmouseover="this.style.color='var(--accent)'" onmouseout="this.style.color='inherit'">${escapeHtml(chunk.file_path)}:${chunk.start_line}-${chunk.end_line}</a>
                         <div class="chunk-badges">
                             <span class="lib-badge ${libClass}">${libLabel}</span>
                             <span class="chunk-score ${scoreClass}">${(chunk.score * 100).toFixed(0)}%</span>

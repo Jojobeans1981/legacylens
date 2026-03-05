@@ -10,6 +10,17 @@ from config import (
 router = APIRouter(prefix="/api")
 
 
+@router.get("/source")
+async def api_source(name: str = None):
+    from db import get_chunk_content
+    if not name or len(name) > MAX_ROUTINE_LENGTH:
+        raise HTTPException(status_code=422, detail="Invalid routine name")
+    result = get_chunk_content(name)
+    if not result:
+        raise HTTPException(status_code=404, detail=f"Routine '{name}' not found")
+    return JSONResponse(content=result)
+
+
 @router.get("/routines")
 async def api_routines(library: str = None, search: str = None):
     from db import get_routines
