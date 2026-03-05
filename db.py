@@ -7,18 +7,24 @@ from datetime import datetime, timezone
 from config import DB_PATH
 
 
+_tables_initialized = False
+
+
 def _get_db_path() -> str:
     return DB_PATH
 
 
 def get_connection() -> sqlite3.Connection:
     """Get a SQLite connection, creating tables if needed."""
+    global _tables_initialized
     db_path = _get_db_path()
     os.makedirs(os.path.dirname(db_path) if os.path.dirname(db_path) else ".", exist_ok=True)
     conn = sqlite3.connect(db_path)
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA journal_mode=WAL")
-    _create_tables(conn)
+    if not _tables_initialized:
+        _create_tables(conn)
+        _tables_initialized = True
     return conn
 
 
@@ -655,6 +661,34 @@ def get_eval_results() -> list[dict]:
                FROM eval_results ORDER BY id DESC"""
         ).fetchall()
         return [dict(r) for r in rows]
+    finally:
+        conn.close()
+
+
+def get_recent_queries(limit: int = 20) -> list[dict]:
+    """Get recent queries from the log."""
+    conn = get_connection()
+    try:
+        rows = conn.execute(
+            """SELECT timestamp, query, mode, latency_ms, cost_usd, top_score,
+                      chunks_retrieved, answer_preview
+               FROM query_log ORDER BY id DESC LIMIT ?""",
+            (limit,)
+        ).fetchall()
+        return [dict(row) for row in rows]
+    finally:
+        conn.close()
+
+
+def get_recent_errors(limit: int = 10) -> list[dict]:
+    """Get recent errors from the log."""
+    conn = get_connection()
+    try:
+        rows = conn.execute(
+            "SELECT timestamp, endpoint, error_type, error_message FROM error_log ORDER BY id DESC LIMIT ?",
+            (limit,)
+        ).fetchall()
+        return [dict(row) for row in rows]
     finally:
         conn.close()
 

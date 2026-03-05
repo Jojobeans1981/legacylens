@@ -97,6 +97,8 @@ Visit `http://localhost:8000` for the query UI and `/dashboard` for observabilit
 | POST | `/patterns` | Pattern analysis (SSE, rate limited) |
 | POST | `/translate` | Fortran→Python translation (SSE, rate limited) |
 | GET | `/api/stats` | Dashboard metrics JSON |
+| GET | `/api/recent-queries` | Recent query log (last 20) |
+| GET | `/api/errors` | Recent error log (last 10) |
 | GET | `/api/routines` | Routine index with search/filter + complexity metrics |
 | GET | `/api/routine-detail` | Full routine detail with callers/callees |
 | GET | `/api/compare` | Side-by-side routine comparison |

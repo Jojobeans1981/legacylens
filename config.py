@@ -43,6 +43,9 @@ DB_PATH = os.getenv("DB_PATH", "./data/legacylens.db")
 # ─── Source ──────────────────────────────────────────────────────────────────
 SOURCE_DIRS = os.getenv("SOURCE_DIRS", "./data/blas_source,./data/lapack_source,./data/scalapack_source")
 
+# ─── Auth ────────────────────────────────────────────────────────────────────
+ADMIN_API_KEY = os.getenv("ADMIN_API_KEY", os.getenv("ANTHROPIC_API_KEY", ""))
+
 # ─── Rate Limiting ───────────────────────────────────────────────────────────
 RATE_LIMIT_RPM = int(os.getenv("RATE_LIMIT_RPM", "30"))
 

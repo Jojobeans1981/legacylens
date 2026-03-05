@@ -2,6 +2,7 @@
 
 import json
 import re
+import threading
 import time as _time
 from typing import Literal
 
@@ -46,6 +47,7 @@ def _classify_query(query: str) -> SearchStrategy:
 # Module-level BM25 index (lazily loaded)
 _bm25_index = None
 _bm25_chunks = None
+_bm25_lock = threading.Lock()
 
 
 def _extract_routine_name(query: str) -> str | None:
@@ -64,29 +66,34 @@ def _get_bm25_index():
     if _bm25_index is not None:
         return _bm25_index, _bm25_chunks
 
-    from db import get_connection
-    conn = get_connection()
-    try:
-        rows = conn.execute(
-            "SELECT chunk_id, routine_name, file_path, chunk_type, start_line, end_line, content FROM chunk_content"
-        ).fetchall()
-    finally:
-        conn.close()
+    with _bm25_lock:
+        if _bm25_index is not None:
+            return _bm25_index, _bm25_chunks
 
-    if not rows:
-        return None, None
+        from db import get_connection
+        conn = get_connection()
+        try:
+            rows = conn.execute(
+                "SELECT chunk_id, routine_name, file_path, chunk_type, start_line, end_line, content FROM chunk_content"
+            ).fetchall()
+        finally:
+            conn.close()
 
-    _bm25_chunks = [dict(r) for r in rows]
-    tokenized = [r["content"].lower().split() for r in _bm25_chunks]
-    _bm25_index = BM25Okapi(tokenized)
-    return _bm25_index, _bm25_chunks
+        if not rows:
+            return None, None
+
+        _bm25_chunks = [dict(r) for r in rows]
+        tokenized = [r["content"].lower().split() for r in _bm25_chunks]
+        _bm25_index = BM25Okapi(tokenized)
+        return _bm25_index, _bm25_chunks
 
 
 def invalidate_bm25_cache():
     """Call after re-ingestion to rebuild BM25 index."""
     global _bm25_index, _bm25_chunks
-    _bm25_index = None
-    _bm25_chunks = None
+    with _bm25_lock:
+        _bm25_index = None
+        _bm25_chunks = None
 
 
 def _bm25_search(query: str, top_k: int = 10) -> list[dict]:
@@ -272,8 +279,9 @@ def retrieve(query: str, index,
                 "chunk_type": source["chunk_type"],
                 "routine_name": source["routine_name"],
                 "score": round(vec["vector_score"] if vec else bm25.get("bm25_score", 0.0), 4),
+                "rrf_score": rrf_score,
             })
-        fused.sort(key=lambda x: x["score"], reverse=True)
+        fused.sort(key=lambda x: x["rrf_score"], reverse=True)
         fused = fused[:top_k]
 
     # Convert to RetrievalChunk list and re-rank
