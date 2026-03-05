@@ -340,6 +340,12 @@
     </div>
 
     <script>
+        function escapeHtml(text) {
+            const div = document.createElement('div');
+            div.textContent = text || '';
+            return div.innerHTML;
+        }
+
         let allRoutines = [];
         let filtered = [];
         let deadCodeSet = new Set();
@@ -512,15 +518,15 @@
                 const checked = selectedForCompare.has(r.routine_name) ? 'checked' : '';
                 const depth = r.nesting_depth || 0;
                 return `<tr>
-                    <td><input type="checkbox" data-routine="${r.routine_name}" ${checked}></td>
-                    <td><a class="routine-link" href="/?query=Explain ${encodeURIComponent(r.routine_name)}&mode=explain">${r.routine_name}</a>${deadTag}</td>
-                    <td><span class="type-badge">${r.chunk_type}</span></td>
-                    <td class="file-path">${r.file_path}</td>
+                    <td><input type="checkbox" data-routine="${escapeHtml(r.routine_name)}" ${checked}></td>
+                    <td><a class="routine-link" href="/?query=Explain ${encodeURIComponent(r.routine_name)}&mode=explain">${escapeHtml(r.routine_name)}</a>${deadTag}</td>
+                    <td><span class="type-badge">${escapeHtml(r.chunk_type)}</span></td>
+                    <td class="file-path">${escapeHtml(r.file_path)}</td>
                     <td class="metric">${r.loc || 0}</td>
                     <td class="metric">${r.var_count || 0}</td>
                     <td class="metric">${r.call_count || 0}</td>
                     <td class="metric ${depthClass(depth)}">${depth}</td>
-                    <td><span class="lib-badge ${libClass}">${r.library}</span></td>
+                    <td><span class="lib-badge ${libClass}">${escapeHtml(r.library)}</span></td>
                 </tr>`;
             }).join('');
 
@@ -582,19 +588,19 @@
                 const isDead = deadCodeSet.has((r.routine_name || '').toUpperCase());
 
                 const callerItems = (r.callers || []).map(c =>
-                    `<span class="call-item">${c.name}</span>`
+                    `<span class="call-item">${escapeHtml(c.name)}</span>`
                 ).join('') || '<span style="color:var(--text-dim)">None</span>';
 
                 const calleeItems = (r.callees || []).map(c =>
-                    `<span class="call-item">${c.name}</span>`
+                    `<span class="call-item">${escapeHtml(c.name)}</span>`
                 ).join('') || '<span style="color:var(--text-dim)">None</span>';
 
                 return `<div class="compare-card">
-                    <h3>${r.routine_name}${isDead ? ' <span class="dead-badge">UNUSED</span>' : ''}</h3>
+                    <h3>${escapeHtml(r.routine_name)}${isDead ? ' <span class="dead-badge">UNUSED</span>' : ''}</h3>
                     <div class="meta-row">
-                        <span class="lib-badge ${libClass}">${r.library}</span>
-                        <span class="type-badge">${r.chunk_type}</span>
-                        <span class="file-path">${r.file_path}:${r.start_line}-${r.end_line}</span>
+                        <span class="lib-badge ${libClass}">${escapeHtml(r.library)}</span>
+                        <span class="type-badge">${escapeHtml(r.chunk_type)}</span>
+                        <span class="file-path">${escapeHtml(r.file_path)}:${r.start_line}-${r.end_line}</span>
                     </div>
                     <div class="compare-metrics">
                         <div class="compare-metric"><div class="label">Lines of Code</div><div class="value">${r.loc || 0}</div></div>

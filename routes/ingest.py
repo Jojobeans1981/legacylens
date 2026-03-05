@@ -2,6 +2,7 @@
 
 import os
 import subprocess
+import tempfile
 
 from fastapi import APIRouter, Request, HTTPException
 
@@ -38,29 +39,49 @@ def _ensure_sources():
 
         if "scalapack" in source_dir.lower():
             print(f"ScaLAPACK source not found at {source_dir}, downloading...")
-            subprocess.run(
-                ["bash", "-c",
-                 f"curl -sL https://github.com/Reference-ScaLAPACK/scalapack/archive/refs/tags/v2.2.0.tar.gz"
-                 f" | tar xz --strip-components=1 -C {source_dir} scalapack-2.2.0/SRC scalapack-2.2.0/PBLAS scalapack-2.2.0/TOOLS scalapack-2.2.0/BLACS"],
-                check=True
-            )
+            tmp = tempfile.NamedTemporaryFile(suffix='.tar.gz', delete=False)
+            try:
+                subprocess.run(
+                    ["curl", "-sL", "https://github.com/Reference-ScaLAPACK/scalapack/archive/refs/tags/v2.2.0.tar.gz", "-o", tmp.name],
+                    check=True
+                )
+                subprocess.run(
+                    ["tar", "xzf", tmp.name, "--strip-components=1", "-C", source_dir,
+                     "scalapack-2.2.0/SRC", "scalapack-2.2.0/PBLAS", "scalapack-2.2.0/TOOLS", "scalapack-2.2.0/BLACS"],
+                    check=True
+                )
+            finally:
+                os.unlink(tmp.name)
             print("ScaLAPACK source downloaded.")
         elif "lapack" in source_dir.lower():
             print(f"LAPACK source not found at {source_dir}, downloading...")
-            subprocess.run(
-                ["bash", "-c",
-                 f"curl -sL https://github.com/Reference-LAPACK/lapack/archive/refs/tags/v3.12.0.tar.gz"
-                 f" | tar xz --strip-components=2 -C {source_dir} lapack-3.12.0/SRC"],
-                check=True
-            )
+            tmp = tempfile.NamedTemporaryFile(suffix='.tar.gz', delete=False)
+            try:
+                subprocess.run(
+                    ["curl", "-sL", "https://github.com/Reference-LAPACK/lapack/archive/refs/tags/v3.12.0.tar.gz", "-o", tmp.name],
+                    check=True
+                )
+                subprocess.run(
+                    ["tar", "xzf", tmp.name, "--strip-components=2", "-C", source_dir, "lapack-3.12.0/SRC"],
+                    check=True
+                )
+            finally:
+                os.unlink(tmp.name)
             print("LAPACK source downloaded.")
         else:
             print(f"BLAS source not found at {source_dir}, downloading...")
-            subprocess.run(
-                ["bash", "-c",
-                 f"curl -sL https://www.netlib.org/blas/blas.tgz | tar xz -C {source_dir}"],
-                check=True
-            )
+            tmp = tempfile.NamedTemporaryFile(suffix='.tar.gz', delete=False)
+            try:
+                subprocess.run(
+                    ["curl", "-sL", "https://www.netlib.org/blas/blas.tgz", "-o", tmp.name],
+                    check=True
+                )
+                subprocess.run(
+                    ["tar", "xzf", tmp.name, "-C", source_dir],
+                    check=True
+                )
+            finally:
+                os.unlink(tmp.name)
             print("BLAS source downloaded.")
 
 

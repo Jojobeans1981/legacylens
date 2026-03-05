@@ -181,6 +181,12 @@
     <svg id="graph"></svg>
 
     <script>
+        function escapeHtml(text) {
+            const div = document.createElement('div');
+            div.textContent = text || '';
+            return div.innerHTML;
+        }
+
         const LIB_COLORS = {
             'BLAS': '#58a6ff', 'LAPACK': '#3fb950', 'ScaLAPACK': '#bc8cff', 'Unknown': '#8b949e'
         };
@@ -313,8 +319,8 @@
 
             const callsOut = edges.filter(e => (e.source.id || e.source) === d.id).map(e => e.target.id || e.target);
             const calledBy = edges.filter(e => (e.target.id || e.target) === d.id).map(e => e.source.id || e.source);
-            document.getElementById('infoCallsOut').innerHTML = `Calls: <strong>${callsOut.join(', ') || 'none'}</strong>`;
-            document.getElementById('infoCalledBy').innerHTML = `Called by: <strong>${calledBy.join(', ') || 'none'}</strong>`;
+            document.getElementById('infoCallsOut').innerHTML = `Calls: <strong>${escapeHtml(callsOut.join(', ')) || 'none'}</strong>`;
+            document.getElementById('infoCalledBy').innerHTML = `Called by: <strong>${escapeHtml(calledBy.join(', ')) || 'none'}</strong>`;
 
             document.getElementById('infoQueryLink').href = `/?query=${encodeURIComponent('What does ' + d.id + ' do?')}&mode=query`;
             document.getElementById('infoExplainLink').href = `/?query=${encodeURIComponent('Explain ' + d.id)}&mode=explain`;
