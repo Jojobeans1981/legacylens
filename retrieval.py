@@ -10,7 +10,7 @@ from rank_bm25 import BM25Okapi
 
 from models import RetrievalChunk, RetrievalResult
 from embed import embed_query
-from config import SCORE_THRESHOLD, DEFAULT_TOP_K, VECTOR_WEIGHT, BM25_WEIGHT
+from config import SCORE_THRESHOLD, DEFAULT_TOP_K, VECTOR_WEIGHT, BM25_WEIGHT, MAX_CONTEXT_PER_CHUNK
 
 # Pattern to detect routine names in queries (uppercase Fortran identifiers)
 _ROUTINE_PATTERN = re.compile(r'\b([A-Z][A-Z0-9]{2,})\b')
@@ -298,7 +298,6 @@ def retrieve(query: str, index,
         return RetrievalResult(chunks=[], context="", found=False, strategy=strategy)
 
     # Assemble context
-    MAX_CONTEXT_PER_CHUNK = 400
     context_parts = []
     for chunk in chunks:
         content = chunk.content[:MAX_CONTEXT_PER_CHUNK]

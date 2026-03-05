@@ -577,7 +577,7 @@ def log_chunk_content(chunks: list):
                    (chunk_id, routine_name, file_path, chunk_type, start_line, end_line, content)
                    VALUES (?, ?, ?, ?, ?, ?, ?)""",
                 (f"chunk_{i}", routine_name, file_path, chunk_type, start_line, end_line,
-                 content[:1000])
+                 content[:2000])
             )
         conn.commit()
     finally:

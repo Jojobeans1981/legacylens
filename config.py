@@ -9,6 +9,7 @@ CACHE_TTL = int(os.getenv("CACHE_TTL", "3600"))  # seconds
 # ─── Retrieval ───────────────────────────────────────────────────────────────
 SCORE_THRESHOLD = float(os.getenv("SCORE_THRESHOLD", "0.35"))
 DEFAULT_TOP_K = int(os.getenv("DEFAULT_TOP_K", "5"))
+MAX_CONTEXT_PER_CHUNK = int(os.getenv("MAX_CONTEXT_PER_CHUNK", "1500"))
 
 # ─── Hybrid Search ──────────────────────────────────────────────────────────
 VECTOR_WEIGHT = float(os.getenv("VECTOR_WEIGHT", "0.7"))

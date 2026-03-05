@@ -194,7 +194,7 @@ def run_ingestion(source_dirs: list[str], index=None) -> IngestResult:
                     "end_line": chunk.end_line,
                     "chunk_type": chunk.chunk_type,
                     "routine_name": chunk.routine_name or "",
-                    "content": chunk.content[:1000],
+                    "content": chunk.content[:2000],
                 }
             })
         index.upsert(vectors=vectors)
